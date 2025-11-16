@@ -3,6 +3,7 @@
 import os
 import subprocess
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional, List, Union
 
@@ -399,3 +400,213 @@ class ValheimSaveTools:
             True if file is .db, .fwl, .fch, or .json
         """
         return ValheimSaveTools.detect_file_type(file_path) is not None
+    
+    def process(self, input_file: str) -> 'SaveFileProcessor':
+        """
+        Create a processor for chaining operations.
+        
+        Args:
+            input_file: Path to the file to process
+            
+        Returns:
+            SaveFileProcessor instance for chaining operations
+            
+        Example:
+            >>> vst = ValheimSaveTools()
+            >>> vst.process("world.db") \\
+            ...    .clean_structures(threshold=30) \\
+            ...    .reset_world() \\
+            ...    .save("cleaned_world.db")
+        """
+        return SaveFileProcessor(self, input_file)
+
+
+class SaveFileProcessor:
+    """
+    Fluent interface for chaining operations on Valheim save files.
+    
+    This class provides a builder pattern for performing multiple operations
+    on a save file in sequence. Operations are performed on a working copy
+    and can be saved to a new file or overwrite the original.
+    
+    Example:
+        >>> vst = ValheimSaveTools()
+        >>> processor = vst.process("world.db")
+        >>> processor.clean_structures().reset_world().save("clean_world.db")
+    """
+    
+    def __init__(self, tools: ValheimSaveTools, input_file: str):
+        """
+        Initialize processor.
+        
+        Args:
+            tools: ValheimSaveTools instance
+            input_file: Path to input file
+        """
+        if not ValheimSaveTools.is_db_file(input_file):
+            raise ValueError(f"{input_file} is not a valid .db file")
+        
+        self._tools = tools
+        self._input_file = input_file
+        self._current_file = input_file
+        self._operations = []
+        self._temp_files = []
+    
+    def clean_structures(self, threshold: int = 25) -> 'SaveFileProcessor':
+        """
+        Queue structure cleaning operation.
+        
+        Args:
+            threshold: Distance threshold for structure removal (default: 25)
+            
+        Returns:
+            Self for chaining
+        """
+        self._operations.append(('clean_structures', {'threshold': threshold}))
+        return self
+    
+    def reset_world(self) -> 'SaveFileProcessor':
+        """
+        Queue world reset operation.
+        
+        Returns:
+            Self for chaining
+        """
+        self._operations.append(('reset_world', {}))
+        return self
+    
+    def add_global_key(self, key: str) -> 'SaveFileProcessor':
+        """
+        Queue global key addition.
+        
+        Args:
+            key: Global key to add
+            
+        Returns:
+            Self for chaining
+        """
+        self._operations.append(('add_global_key', {'key': key}))
+        return self
+    
+    def remove_global_key(self, key: str) -> 'SaveFileProcessor':
+        """
+        Queue global key removal.
+        
+        Args:
+            key: Global key to remove
+            
+        Returns:
+            Self for chaining
+        """
+        self._operations.append(('remove_global_key', {'key': key}))
+        return self
+    
+    def clear_all_global_keys(self) -> 'SaveFileProcessor':
+        """
+        Queue clearing all global keys.
+        
+        Returns:
+            Self for chaining
+        """
+        self._operations.append(('clear_all_global_keys', {}))
+        return self
+    
+    def _execute_operations(self) -> str:
+        """
+        Execute all queued operations.
+        
+        Returns:
+            Path to the final processed file
+        """
+        if not self._operations:
+            # No operations, just return input file
+            return self._current_file
+        
+        # Create temp directory for intermediate files
+        temp_dir = tempfile.mkdtemp(prefix="valheim_processor_")
+        
+        # Copy input file to temp directory as working copy
+        working_file = os.path.join(temp_dir, os.path.basename(self._input_file))
+        shutil.copy2(self._current_file, working_file)
+        self._temp_files.append(working_file)
+        
+        # Execute each operation in sequence
+        for operation, kwargs in self._operations:
+            if operation == 'clean_structures':
+                self._tools.clean_structures(working_file, **kwargs)
+            elif operation == 'reset_world':
+                self._tools.reset_world(working_file)
+            elif operation == 'add_global_key':
+                self._tools.add_global_key(working_file, **kwargs)
+            elif operation == 'remove_global_key':
+                self._tools.remove_global_key(working_file, **kwargs)
+            elif operation == 'clear_all_global_keys':
+                self._tools.clear_all_global_keys(working_file)
+        
+        return working_file
+    
+    def save(self, output_file: Optional[str] = None) -> str:
+        """
+        Execute all operations and save the result.
+        
+        Args:
+            output_file: Path to save result (default: overwrite input file)
+            
+        Returns:
+            Path to the saved file
+        """
+        processed_file = self._execute_operations()
+        
+        # Determine output path
+        final_output = output_file or self._input_file
+        
+        # Copy processed file to final destination
+        if processed_file != final_output:
+            shutil.copy2(processed_file, final_output)
+        
+        # Cleanup temp files
+        for temp_file in self._temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                # Try to remove temp directory
+                temp_dir = os.path.dirname(temp_file)
+                if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                    os.rmdir(temp_dir)
+            except (OSError, PermissionError):
+                pass  # Best effort cleanup
+        
+        return final_output
+    
+    def to_json(self, output_file: Optional[str] = None) -> str:
+        """
+        Execute all operations and convert result to JSON.
+        
+        Args:
+            output_file: Path to save JSON result
+            
+        Returns:
+            Path to the JSON file
+        """
+        processed_file = self._execute_operations()
+        
+        # Convert to JSON
+        json_file = self._tools.to_json(processed_file, output_file)
+        
+        # Cleanup temp files
+        for temp_file in self._temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                temp_dir = os.path.dirname(temp_file)
+                if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                    os.rmdir(temp_dir)
+            except (OSError, PermissionError):
+                pass
+        
+        return json_file
+    
+    def __repr__(self) -> str:
+        """String representation of processor."""
+        ops = [f"{op}({kwargs})" for op, kwargs in self._operations]
+        return f"SaveFileProcessor(file={self._input_file}, operations={ops})"

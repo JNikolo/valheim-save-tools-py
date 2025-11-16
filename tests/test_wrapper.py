@@ -419,3 +419,229 @@ class TestFileDetection:
         assert ValheimSaveTools.is_valheim_file("world.json") is True
         assert ValheimSaveTools.is_valheim_file("world.txt") is False
         assert ValheimSaveTools.is_valheim_file("readme.md") is False
+
+
+class TestInputValidation:
+    """Test input validation for methods."""
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_to_json_invalid_input(self, mock_run, vst):
+        """Test to_json rejects invalid input files."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.to_json("world.txt")
+        
+        assert "not a valid Valheim save file" in str(exc_info.value)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_to_json_accepts_db(self, mock_run, vst):
+        """Test to_json accepts .db files."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        
+        vst.to_json("world.db")
+        mock_run.assert_called_once()
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_to_json_accepts_fwl(self, mock_run, vst):
+        """Test to_json accepts .fwl files."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        
+        vst.to_json("world.fwl")
+        mock_run.assert_called_once()
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_to_json_accepts_fch(self, mock_run, vst):
+        """Test to_json accepts .fch files."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        
+        vst.to_json("character.fch")
+        mock_run.assert_called_once()
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_from_json_invalid_input(self, mock_run, vst):
+        """Test from_json rejects non-JSON files."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.from_json("world.db")
+        
+        assert "not a JSON file" in str(exc_info.value)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_list_global_keys_invalid_input(self, mock_run, vst):
+        """Test list_global_keys rejects non-.db files."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.list_global_keys("world.json")
+        
+        assert "not a valid .db file" in str(exc_info.value)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_add_global_key_invalid_input(self, mock_run, vst):
+        """Test add_global_key rejects non-.db files."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.add_global_key("world.fwl", "key")
+        
+        assert "not a valid .db file" in str(exc_info.value)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_clean_structures_invalid_input(self, mock_run, vst):
+        """Test clean_structures rejects non-.db files."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.clean_structures("world.json")
+        
+        assert "not a valid .db file" in str(exc_info.value)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_reset_world_invalid_input(self, mock_run, vst):
+        """Test reset_world rejects non-.db files."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.reset_world("character.fch")
+        
+        assert "not a valid .db file" in str(exc_info.value)
+
+
+class TestSaveFileProcessor:
+    """Test SaveFileProcessor builder pattern."""
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_process_creates_processor(self, mock_run, vst):
+        """Test process() creates SaveFileProcessor."""
+        from valheim_save_tools_py.wrapper import SaveFileProcessor
+        
+        processor = vst.process("world.db")
+        assert isinstance(processor, SaveFileProcessor)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_process_validates_db_file(self, mock_run, vst):
+        """Test process() validates .db file."""
+        with pytest.raises(ValueError) as exc_info:
+            vst.process("world.json")
+        
+        assert "not a valid .db file" in str(exc_info.value)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    def test_single_operation_chain(self, mock_remove, mock_exists, mock_copy, mock_run, vst):
+        """Test chaining a single operation."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        
+        result = vst.process("world.db").clean_structures().save("output.db")
+        
+        assert result == "output.db"
+        # Verify clean_structures was called
+        assert any("--cleanStructures" in str(call) for call in mock_run.call_args_list)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    def test_multiple_operations_chain(self, mock_remove, mock_exists, mock_copy, mock_run, vst):
+        """Test chaining multiple operations."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        
+        result = (vst.process("world.db")
+                     .clean_structures(threshold=30)
+                     .reset_world()
+                     .save("output.db"))
+        
+        assert result == "output.db"
+        # Both operations should be called
+        assert any("--cleanStructures" in str(call) for call in mock_run.call_args_list)
+        assert any("--resetWorld" in str(call) for call in mock_run.call_args_list)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    def test_global_keys_in_chain(self, mock_remove, mock_exists, mock_copy, mock_run, vst):
+        """Test chaining global key operations."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        
+        result = (vst.process("world.db")
+                     .add_global_key("defeated_eikthyr")
+                     .add_global_key("defeated_elder")
+                     .save("output.db"))
+        
+        assert result == "output.db"
+        # Both add operations should be called
+        add_calls = [call for call in mock_run.call_args_list 
+                     if "--addGlobalKey" in str(call)]
+        assert len(add_calls) == 2
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    def test_save_without_output_overwrites(self, mock_remove, mock_exists, mock_copy, mock_run, vst):
+        """Test save() without output file overwrites original."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        
+        result = vst.process("world.db").clean_structures().save()
+        
+        assert result == "world.db"
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    def test_to_json_after_operations(self, mock_remove, mock_exists, mock_copy, mock_run, vst):
+        """Test converting to JSON after operations."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        
+        result = (vst.process("world.db")
+                     .clean_structures()
+                     .to_json("output.json"))
+        
+        assert result == "output.json"
+        # Should have clean_structures and conversion to JSON
+        assert any("--cleanStructures" in str(call) for call in mock_run.call_args_list)
+        # Last call should be the JSON conversion
+        last_call_args = str(mock_run.call_args_list[-1])
+        assert "output.json" in last_call_args
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    def test_no_operations_save(self, mock_exists, mock_copy, mock_run, vst):
+        """Test save() with no operations queued."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        
+        result = vst.process("world.db").save("output.db")
+        
+        assert result == "output.db"
+        # Should just copy the file
+        mock_copy.assert_called()
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    def test_processor_repr(self, mock_run, vst):
+        """Test SaveFileProcessor string representation."""
+        processor = vst.process("world.db").clean_structures().reset_world()
+        
+        repr_str = repr(processor)
+        assert "SaveFileProcessor" in repr_str
+        assert "world.db" in repr_str
+        assert "clean_structures" in repr_str
+        assert "reset_world" in repr_str
