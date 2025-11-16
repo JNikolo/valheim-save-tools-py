@@ -369,3 +369,53 @@ class TestErrorHandling:
             vst.run_command("test", timeout=30)
         
         assert "timed out" in str(exc_info.value).lower()
+
+
+class TestFileDetection:
+    """Test file type detection helpers."""
+    
+    def test_is_db_file(self):
+        """Test .db file detection."""
+        assert ValheimSaveTools.is_db_file("world.db") is True
+        assert ValheimSaveTools.is_db_file("world.DB") is True
+        assert ValheimSaveTools.is_db_file("/path/to/world.db") is True
+        assert ValheimSaveTools.is_db_file("world.json") is False
+    
+    def test_is_fwl_file(self):
+        """Test .fwl file detection."""
+        assert ValheimSaveTools.is_fwl_file("world.fwl") is True
+        assert ValheimSaveTools.is_fwl_file("world.FWL") is True
+        assert ValheimSaveTools.is_fwl_file("/path/to/world.fwl") is True
+        assert ValheimSaveTools.is_fwl_file("world.db") is False
+    
+    def test_is_fch_file(self):
+        """Test .fch file detection."""
+        assert ValheimSaveTools.is_fch_file("character.fch") is True
+        assert ValheimSaveTools.is_fch_file("character.FCH") is True
+        assert ValheimSaveTools.is_fch_file("/path/to/character.fch") is True
+        assert ValheimSaveTools.is_fch_file("character.db") is False
+    
+    def test_is_json_file(self):
+        """Test .json file detection."""
+        assert ValheimSaveTools.is_json_file("world.json") is True
+        assert ValheimSaveTools.is_json_file("world.JSON") is True
+        assert ValheimSaveTools.is_json_file("/path/to/world.json") is True
+        assert ValheimSaveTools.is_json_file("world.db") is False
+    
+    def test_detect_file_type(self):
+        """Test file type detection."""
+        assert ValheimSaveTools.detect_file_type("world.db") == "db"
+        assert ValheimSaveTools.detect_file_type("world.fwl") == "fwl"
+        assert ValheimSaveTools.detect_file_type("character.fch") == "fch"
+        assert ValheimSaveTools.detect_file_type("world.json") == "json"
+        assert ValheimSaveTools.detect_file_type("world.txt") is None
+        assert ValheimSaveTools.detect_file_type("/path/to/WORLD.DB") == "db"
+    
+    def test_is_valheim_file(self):
+        """Test generic Valheim file detection."""
+        assert ValheimSaveTools.is_valheim_file("world.db") is True
+        assert ValheimSaveTools.is_valheim_file("world.fwl") is True
+        assert ValheimSaveTools.is_valheim_file("character.fch") is True
+        assert ValheimSaveTools.is_valheim_file("world.json") is True
+        assert ValheimSaveTools.is_valheim_file("world.txt") is False
+        assert ValheimSaveTools.is_valheim_file("readme.md") is False

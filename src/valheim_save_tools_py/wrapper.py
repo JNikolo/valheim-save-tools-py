@@ -129,6 +129,13 @@ class ValheimSaveTools:
         Returns:
             Path to the created JSON file
         """
+        if (not self.is_db_file(input_file) 
+            and not self.is_fwl_file(input_file) 
+            and not self.is_fch_file(input_file)):
+            raise ValueError(
+                f"Input file is not a valid Valheim save file: {input_file} (expected .db, .fwl, or .fch)"
+            )
+        
         if output_file is None:
             output_file = self._auto_output_path(input_file, ".json")
         
@@ -147,6 +154,9 @@ class ValheimSaveTools:
         Returns:
             Path to the created save file
         """
+        if not self.is_json_file(input_file):
+            raise ValueError(f"Input file is not a JSON file: {input_file}")
+        
         if output_file is None:
             # Try to detect original extension from JSON content or default to .db
             output_file = self._auto_output_path(input_file, ".db")
@@ -167,6 +177,9 @@ class ValheimSaveTools:
         Returns:
             List of global key names
         """
+        if not self.is_db_file(db_file):
+            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        
         result = self.run_command(db_file, "--listGlobalKeys")
         # Parse output - format is typically one key per line
         keys = [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -184,6 +197,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file
         """
+        if not self.is_db_file(db_file):
+            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        
         if output_file is None:
             output_file = db_file
         
@@ -203,6 +219,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file
         """
+        if not self.is_db_file(db_file):
+            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        
         if output_file is None:
             output_file = db_file
         
@@ -221,6 +240,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file
         """
+        if not self.is_db_file(db_file):
+            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        
         return self.remove_global_key(db_file, "all", output_file)
     
     # Structure Processing Methods
@@ -242,6 +264,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file
         """
+        if not self.is_db_file(db_file):
+            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        
         if output_file is None:
             output_file = db_file
         
@@ -274,6 +299,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file
         """
+        if not self.is_db_file(db_file):
+            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        
         if output_file is None:
             output_file = db_file
         
@@ -284,3 +312,90 @@ class ValheimSaveTools:
         flags = self._build_common_flags()
         self.run_command(db_file, output_file, "--resetWorld", *flags)
         return output_file
+    
+    # File Type Detection Helpers
+    
+    @staticmethod
+    def is_db_file(file_path: str) -> bool:
+        """
+        Check if file is a Valheim world database file (.db).
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            True if file has .db extension
+        """
+        return Path(file_path).suffix.lower() == ".db"
+    
+    @staticmethod
+    def is_fwl_file(file_path: str) -> bool:
+        """
+        Check if file is a Valheim world metadata file (.fwl).
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            True if file has .fwl extension
+        """
+        return Path(file_path).suffix.lower() == ".fwl"
+    
+    @staticmethod
+    def is_fch_file(file_path: str) -> bool:
+        """
+        Check if file is a Valheim character file (.fch).
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            True if file has .fch extension
+        """
+        return Path(file_path).suffix.lower() == ".fch"
+    
+    @staticmethod
+    def is_json_file(file_path: str) -> bool:
+        """
+        Check if file is a JSON file (.json).
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            True if file has .json extension
+        """
+        return Path(file_path).suffix.lower() == ".json"
+    
+    @staticmethod
+    def detect_file_type(file_path: str) -> Optional[str]:
+        """
+        Detect Valheim save file type from extension.
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            File type: 'db', 'fwl', 'fch', 'json', or None if unknown
+        """
+        suffix = Path(file_path).suffix.lower()
+        type_map = {
+            ".db": "db",
+            ".fwl": "fwl",
+            ".fch": "fch",
+            ".json": "json"
+        }
+        return type_map.get(suffix)
+    
+    @staticmethod
+    def is_valheim_file(file_path: str) -> bool:
+        """
+        Check if file is any Valheim save file type.
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            True if file is .db, .fwl, .fch, or .json
+        """
+        return ValheimSaveTools.detect_file_type(file_path) is not None
