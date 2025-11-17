@@ -1,8 +1,13 @@
+---
+layout: default
+title: Home
+---
+
 # Valheim Save Tools Python API
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://jnikolo.github.io/valheim-save-tools-py/)
+[![Tests](https://img.shields.io/badge/tests-55%20passed-brightgreen.svg)](https://github.com/JNikolo/valheim-save-tools-py/tree/main/tests)
 
 A Pythonic wrapper for [Valheim Save Tools](https://github.com/Kakoen/valheim-save-tools), providing an intuitive API to manipulate Valheim save files programmatically.
 
@@ -48,10 +53,9 @@ with vst.process("world.db") as p:
 
 ## Documentation
 
-- 🌐 **[Live Documentation](https://jnikolo.github.io/valheim-save-tools-py/)** - Full documentation site
-- 📚 **[API Reference](docs/API.md)** - Complete API documentation
-- 📖 **[Usage Guide](docs/USAGE.md)** - Detailed usage patterns and examples
-- 🎯 **[Examples](docs/examples/)** - Working code examples
+- 📚 **[API Reference](API.html)** - Complete API documentation
+- 📖 **[Usage Guide](USAGE.html)** - Detailed usage patterns and examples
+- 🎯 **[Examples](examples/)** - Working code examples
 
 ## Common Use Cases
 
@@ -91,9 +95,15 @@ vst.clean_structures("world.db", threshold=50)
 - Python 3.8 or higher
 - Java 17 or higher (for running the bundled JAR)
 
+## Links
+
+- [GitHub Repository](https://github.com/JNikolo/valheim-save-tools-py)
+- [PyPI Package](https://pypi.org/project/valheim-save-tools-py/)
+- [Issue Tracker](https://github.com/JNikolo/valheim-save-tools-py/issues)
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/JNikolo/valheim-save-tools-py/blob/main/LICENSE) file for details.
 
 ## Credits
 

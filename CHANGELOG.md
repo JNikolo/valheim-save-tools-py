@@ -57,17 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auto-detection of Java runtime
 - Cross-platform compatibility (Windows, macOS, Linux)
 
-## [Unreleased]
-
-### Planned
-
-- Integration tests with actual JAR execution
-- Performance benchmarks
-- Batch processing utilities
-- Configuration file support
-- Logging system
-- Progress callbacks for long operations
-
 ---
 
 [0.1.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.1.0

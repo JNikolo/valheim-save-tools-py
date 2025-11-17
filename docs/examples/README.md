@@ -1,3 +1,9 @@
+---
+layout: default
+title: Examples
+nav_order: 4
+---
+
 # Examples Directory
 
 This directory contains comprehensive examples demonstrating various usage patterns of the Valheim Save Tools Python API.

@@ -1,0 +1,82 @@
+# Jekyll configuration for GitHub Pages
+title: Valheim Save Tools Python API
+description: A Pythonic wrapper for Valheim Save Tools - manipulate Valheim save files programmatically
+baseurl: "/valheim-save-tools-py"
+url: "https://jnikolo.github.io"
+
+# Theme
+theme: jekyll-theme-cayman
+# Alternative themes you can use:
+# theme: jekyll-theme-minimal
+# theme: jekyll-theme-slate
+# theme: jekyll-theme-architect
+
+# GitHub metadata
+repository: JNikolo/valheim-save-tools-py
+
+# Build settings
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
+
+# Plugins
+plugins:
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-readme-index
+  - jekyll-titles-from-headings
+
+# Plugin settings
+relative_links:
+  enabled: true
+  collections: true
+
+optional_front_matter:
+  remove_originals: false
+
+titles_from_headings:
+  enabled: true
+  strip_title: true
+  collections: true
+
+# Navigation
+navigation:
+  - title: Home
+    url: /
+  - title: API Reference
+    url: /API
+  - title: Usage Guide
+    url: /USAGE
+  - title: Examples
+    url: /examples/
+
+# Include/Exclude
+include:
+  - API.md
+  - USAGE.md
+  - examples
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+
+# Collections
+collections:
+  examples:
+    output: true
+    permalink: /examples/:name
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+  - scope:
+      path: "examples"
+    values:
+      layout: default

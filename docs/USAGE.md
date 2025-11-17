@@ -1,3 +1,9 @@
+---
+layout: default
+title: Usage Guide
+nav_order: 3
+---
+
 # Usage Guide
 
 Detailed usage patterns and examples for Valheim Save Tools Python API.
