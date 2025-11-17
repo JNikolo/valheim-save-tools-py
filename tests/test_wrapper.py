@@ -645,3 +645,145 @@ class TestSaveFileProcessor:
         assert "world.db" in repr_str
         assert "clean_structures" in repr_str
         assert "reset_world" in repr_str
+
+
+class TestContextManager:
+    """Test context manager functionality."""
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    @patch('valheim_save_tools_py.wrapper.os.rmdir')
+    @patch('valheim_save_tools_py.wrapper.os.listdir')
+    def test_context_manager_basic(self, mock_listdir, mock_rmdir, mock_remove, 
+                                   mock_exists, mock_copy, mock_run, vst):
+        """Test basic context manager usage."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        mock_listdir.return_value = []
+        
+        with vst.process("world.db") as processor:
+            processor.clean_structures()
+        
+        # Should execute operations and copy back
+        assert mock_run.called
+        assert mock_copy.called
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    @patch('valheim_save_tools_py.wrapper.os.rmdir')
+    @patch('valheim_save_tools_py.wrapper.os.listdir')
+    def test_context_manager_multiple_operations(self, mock_listdir, mock_rmdir, 
+                                                  mock_remove, mock_exists, mock_copy, 
+                                                  mock_run, vst):
+        """Test context manager with multiple operations."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        mock_listdir.return_value = []
+        
+        with vst.process("world.db") as processor:
+            processor.clean_structures(threshold=30)
+            processor.reset_world()
+            processor.add_global_key("defeated_eikthyr")
+        
+        # All operations should be called
+        assert any("--cleanStructures" in str(call) for call in mock_run.call_args_list)
+        assert any("--resetWorld" in str(call) for call in mock_run.call_args_list)
+        assert any("--addGlobalKey" in str(call) for call in mock_run.call_args_list)
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    @patch('valheim_save_tools_py.wrapper.os.rmdir')
+    @patch('valheim_save_tools_py.wrapper.os.listdir')
+    def test_context_manager_chaining(self, mock_listdir, mock_rmdir, mock_remove, 
+                                      mock_exists, mock_copy, mock_run, vst):
+        """Test context manager with method chaining."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        mock_listdir.return_value = []
+        
+        with vst.process("world.db") as processor:
+            processor.clean_structures().reset_world().add_global_key("defeated_elder")
+        
+        # All chained operations should execute
+        call_count = len(mock_run.call_args_list)
+        assert call_count >= 3
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    @patch('valheim_save_tools_py.wrapper.os.rmdir')
+    @patch('valheim_save_tools_py.wrapper.os.listdir')
+    def test_context_manager_no_operations(self, mock_listdir, mock_rmdir, mock_remove, 
+                                           mock_exists, mock_copy, mock_run, vst):
+        """Test context manager with no operations queued."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        mock_listdir.return_value = []
+        
+        with vst.process("world.db") as processor:
+            pass  # No operations
+        
+        # Should still setup and cleanup, but no JAR operations
+        # Only the initial copy should happen
+        assert mock_copy.called
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    @patch('valheim_save_tools_py.wrapper.os.rmdir')
+    @patch('valheim_save_tools_py.wrapper.os.listdir')
+    def test_context_manager_cleanup_on_exception(self, mock_listdir, mock_rmdir, 
+                                                   mock_remove, mock_exists, mock_copy, 
+                                                   mock_run, vst):
+        """Test context manager cleans up even on exception."""
+        mock_run.side_effect = Exception("Test error")
+        mock_exists.return_value = True
+        mock_listdir.return_value = []
+        
+        with pytest.raises(Exception) as exc_info:
+            with vst.process("world.db") as processor:
+                processor.clean_structures()
+        
+        assert "Test error" in str(exc_info.value)
+        # Cleanup should still be called
+        assert mock_remove.called or mock_rmdir.called
+    
+    @patch('valheim_save_tools_py.wrapper.subprocess.run')
+    @patch('valheim_save_tools_py.wrapper.shutil.copy2')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
+    @patch('valheim_save_tools_py.wrapper.os.rmdir')
+    @patch('valheim_save_tools_py.wrapper.os.listdir')
+    def test_context_manager_overwrites_original(self, mock_listdir, mock_rmdir, 
+                                                  mock_remove, mock_exists, mock_copy, 
+                                                  mock_run, vst):
+        """Test context manager overwrites original file."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        mock_exists.return_value = True
+        mock_listdir.return_value = []
+        
+        with vst.process("world.db") as processor:
+            processor.clean_structures()
+        
+        # Should copy the processed file back to the original
+        copy_calls = mock_copy.call_args_list
+        # At least one call should copy to world.db
+        assert any("world.db" in str(call) for call in copy_calls)

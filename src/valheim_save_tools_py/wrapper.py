@@ -451,6 +451,8 @@ class SaveFileProcessor:
         self._current_file = input_file
         self._operations = []
         self._temp_files = []
+        self._temp_dir = None
+        self._in_context = False
     
     def clean_structures(self, threshold: int = 25) -> 'SaveFileProcessor':
         """
@@ -524,6 +526,7 @@ class SaveFileProcessor:
         
         # Create temp directory for intermediate files
         temp_dir = tempfile.mkdtemp(prefix="valheim_processor_")
+        self._temp_dir = temp_dir
         
         # Copy input file to temp directory as working copy
         working_file = os.path.join(temp_dir, os.path.basename(self._input_file))
@@ -565,16 +568,7 @@ class SaveFileProcessor:
             shutil.copy2(processed_file, final_output)
         
         # Cleanup temp files
-        for temp_file in self._temp_files:
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                # Try to remove temp directory
-                temp_dir = os.path.dirname(temp_file)
-                if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-                    os.rmdir(temp_dir)
-            except (OSError, PermissionError):
-                pass  # Best effort cleanup
+        self._cleanup_temp_files()
         
         return final_output
     
@@ -594,15 +588,7 @@ class SaveFileProcessor:
         json_file = self._tools.to_json(processed_file, output_file)
         
         # Cleanup temp files
-        for temp_file in self._temp_files:
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                temp_dir = os.path.dirname(temp_file)
-                if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-                    os.rmdir(temp_dir)
-            except (OSError, PermissionError):
-                pass
+        self._cleanup_temp_files()
         
         return json_file
     
@@ -610,3 +596,89 @@ class SaveFileProcessor:
         """String representation of processor."""
         ops = [f"{op}({kwargs})" for op, kwargs in self._operations]
         return f"SaveFileProcessor(file={self._input_file}, operations={ops})"
+    
+    def __enter__(self) -> 'SaveFileProcessor':
+        """
+        Enter context manager.
+        
+        Creates a temp directory and working copy of the input file.
+        
+        Returns:
+            Self for use in with statement
+            
+        Example:
+            >>> vst = ValheimSaveTools()
+            >>> with vst.process("world.db") as processor:
+            ...     processor.clean_structures().reset_world()
+            ...     # Operations executed and cleaned up automatically
+        """
+        self._in_context = True
+        
+        # Create temp directory for working files
+        self._temp_dir = tempfile.mkdtemp(prefix="valheim_processor_")
+        
+        # Copy input file to temp directory as working copy
+        working_file = os.path.join(self._temp_dir, os.path.basename(self._input_file))
+        shutil.copy2(self._input_file, working_file)
+        self._current_file = working_file
+        self._temp_files.append(working_file)
+        
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Exit context manager.
+        
+        If operations were queued, executes them and saves the result.
+        Always cleans up temp files.
+        
+        Args:
+            exc_type: Exception type if error occurred
+            exc_val: Exception value if error occurred
+            exc_tb: Exception traceback if error occurred
+            
+        Returns:
+            False to propagate exceptions
+        """
+        try:
+            # If no exception and operations were queued, execute them
+            if exc_type is None and self._operations:
+                # Execute operations on the working file
+                for operation, kwargs in self._operations:
+                    if operation == 'clean_structures':
+                        self._tools.clean_structures(self._current_file, **kwargs)
+                    elif operation == 'reset_world':
+                        self._tools.reset_world(self._current_file)
+                    elif operation == 'add_global_key':
+                        self._tools.add_global_key(self._current_file, **kwargs)
+                    elif operation == 'remove_global_key':
+                        self._tools.remove_global_key(self._current_file, **kwargs)
+                    elif operation == 'clear_all_global_keys':
+                        self._tools.clear_all_global_keys(self._current_file)
+                
+                # Copy result back to original file
+                shutil.copy2(self._current_file, self._input_file)
+        finally:
+            # Always cleanup temp files
+            self._cleanup_temp_files()
+            self._in_context = False
+        
+        # Return False to propagate any exceptions
+        return False
+    
+    def _cleanup_temp_files(self):
+        """Clean up temporary files and directory."""
+        for temp_file in self._temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except (OSError, PermissionError):
+                pass  # Best effort cleanup
+        
+        # Try to remove temp directory
+        if self._temp_dir and os.path.exists(self._temp_dir):
+            try:
+                if not os.listdir(self._temp_dir):
+                    os.rmdir(self._temp_dir)
+            except (OSError, PermissionError):
+                pass  # Best effort cleanup
