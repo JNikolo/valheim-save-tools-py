@@ -11,21 +11,25 @@ from valheim_save_tools_py import ValheimSaveTools
 
 
 def convert_to_json_auto():
-    """Convert save file to JSON with auto-generated filename."""
+    """Convert save file to JSON and get parsed data."""
     vst = ValheimSaveTools()
     
-    # Auto-generates output filename (world.db -> world.json)
-    output = vst.to_json("world.db")
-    print(f"Converted to: {output}")
+    # Returns parsed JSON data as dictionary
+    data = vst.to_json("world.db")
+    print(f"World version: {data.get('version', 'unknown')}")
+    print(f"Global keys: {len(data.get('globalKeys', []))}")
+    return data
 
 
 def convert_to_json_explicit():
     """Convert save file to JSON with explicit output filename."""
     vst = ValheimSaveTools()
     
-    # Specify custom output filename
-    output = vst.to_json("world.db", "backup_world.json")
-    print(f"Converted to: {output}")
+    # Specify custom output filename - still returns data
+    data = vst.to_json("world.db", "backup_world.json")
+    print(f"Saved to: backup_world.json")
+    print(f"Data contains {len(data)} top-level keys")
+    return data
 
 
 def convert_from_json():
@@ -38,20 +42,22 @@ def convert_from_json():
 
 
 def batch_convert_world_files():
-    """Convert all world files in a directory to JSON."""
+    """Convert all world files in a directory to JSON and save them."""
     vst = ValheimSaveTools()
     
     world_dir = Path("./worlds")
     
     # Convert all .db files
     for db_file in world_dir.glob("*.db"):
-        json_file = vst.to_json(str(db_file))
-        print(f"✓ {db_file.name} -> {Path(json_file).name}")
+        json_path = db_file.with_suffix('.json')
+        data = vst.to_json(str(db_file), str(json_path))
+        print(f"✓ {db_file.name} -> {json_path.name} (version: {data.get('version', '?')})")
     
     # Convert all .fwl files
     for fwl_file in world_dir.glob("*.fwl"):
-        json_file = vst.to_json(str(fwl_file))
-        print(f"✓ {fwl_file.name} -> {Path(json_file).name}")
+        json_path = fwl_file.with_suffix('.json')
+        data = vst.to_json(str(fwl_file), str(json_path))
+        print(f"✓ {fwl_file.name} -> {json_path.name}")
 
 
 def batch_convert_character_files():
@@ -61,8 +67,10 @@ def batch_convert_character_files():
     char_dir = Path("./characters")
     
     for fch_file in char_dir.glob("*.fch"):
-        json_file = vst.to_json(str(fch_file))
-        print(f"✓ {fch_file.name} -> {Path(json_file).name}")
+        json_path = fch_file.with_suffix('.json')
+        data = vst.to_json(str(fch_file), str(json_path))
+        char_name = data.get('name', 'Unknown')
+        print(f"✓ {fch_file.name} -> {json_path.name} (Character: {char_name})")
 
 
 def convert_with_verbose():
