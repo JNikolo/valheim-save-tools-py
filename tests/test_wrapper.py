@@ -129,31 +129,63 @@ class TestAutoOutputPath:
 class TestFileConversion:
     """Test file conversion methods."""
     
+    @patch('builtins.open', create=True)
+    @patch('valheim_save_tools_py.wrapper.tempfile.NamedTemporaryFile')
+    @patch('valheim_save_tools_py.wrapper.os.path.exists')
+    @patch('valheim_save_tools_py.wrapper.os.remove')
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
-    def test_to_json_auto_output(self, mock_run, vst):
-        """Test converting to JSON with auto-generated output."""
+    def test_to_json_auto_output(self, mock_run, mock_remove, mock_exists, mock_temp, mock_open, vst):
+        """Test converting to JSON with auto-generated temporary output."""
+        # Setup mocks
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         
-        result = vst.to_json("world.db")
+        # Mock temporary file
+        mock_tmp = Mock()
+        mock_tmp.name = "/tmp/tmpfile.json"
+        mock_temp.return_value = mock_tmp
+        mock_exists.return_value = True
         
-        assert result == "world.json"
+        # Mock JSON data to be returned
+        test_data = {"version": 1, "world": "TestWorld"}
+        
+        # Mock json.load to return test data
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            result = vst.to_json("world.db")
+        
+        # Verify it returns parsed JSON data as dict
+        assert isinstance(result, dict)
+        assert result == test_data
+        
+        # Verify the command was called
         mock_run.assert_called_once()
         args = mock_run.call_args[0][0]
         assert "world.db" in args
-        assert "world.json" in args
+        
+        # Verify temp file was removed
+        mock_remove.assert_called()
     
+    @patch('builtins.open', create=True)
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
-    def test_to_json_explicit_output(self, mock_run, vst):
-        """Test converting to JSON with explicit output."""
+    def test_to_json_explicit_output(self, mock_run, mock_open, vst):
+        """Test converting to JSON with explicit output file."""
+        # Setup mocks
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         
-        result = vst.to_json("world.db", "custom.json")
+        # Mock JSON data to be returned
+        test_data = {"version": 1, "world": "CustomWorld", "data": [1, 2, 3]}
         
-        assert result == "custom.json"
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            result = vst.to_json("world.db", "custom.json")
+        
+        # Verify it returns parsed JSON data as dict
+        assert isinstance(result, dict)
+        assert result == test_data
+        
+        # Verify the command was called with explicit output
         args = mock_run.call_args[0][0]
         assert "world.db" in args
         assert "custom.json" in args
@@ -311,15 +343,18 @@ class TestStructureProcessing:
 class TestFlagsIntegration:
     """Test that flags are properly integrated into commands."""
     
+    @patch('builtins.open', create=True)
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
-    def test_verbose_flag_in_conversion(self, mock_run, mock_setup):
+    def test_verbose_flag_in_conversion(self, mock_run, mock_open, mock_setup):
         """Test verbose flag is included in conversion."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         
-        vst = ValheimSaveTools(jar_path="/fake/path.jar", verbose=True)
-        vst.to_json("world.db")
+        test_data = {"version": 1}
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            vst = ValheimSaveTools(jar_path="/fake/path.jar", verbose=True)
+            vst.to_json("world.db", "output.json")
         
         args = mock_run.call_args[0][0]
         assert "-v" in args
@@ -432,35 +467,53 @@ class TestInputValidation:
         
         assert "not a valid Valheim save file" in str(exc_info.value)
     
+    @patch('builtins.open', create=True)
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
-    def test_to_json_accepts_db(self, mock_run, vst):
+    def test_to_json_accepts_db(self, mock_run, mock_open, vst):
         """Test to_json accepts .db files."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         
-        vst.to_json("world.db")
+        test_data = {"type": "db"}
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            result = vst.to_json("world.db", "output.json")
+        
         mock_run.assert_called_once()
+        assert isinstance(result, dict)
+        assert result == test_data
     
+    @patch('builtins.open', create=True)
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
-    def test_to_json_accepts_fwl(self, mock_run, vst):
+    def test_to_json_accepts_fwl(self, mock_run, mock_open, vst):
         """Test to_json accepts .fwl files."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         
-        vst.to_json("world.fwl")
+        test_data = {"type": "fwl"}
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            result = vst.to_json("world.fwl", "output.json")
+        
         mock_run.assert_called_once()
+        assert isinstance(result, dict)
+        assert result == test_data
     
+    @patch('builtins.open', create=True)
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
-    def test_to_json_accepts_fch(self, mock_run, vst):
+    def test_to_json_accepts_fch(self, mock_run, mock_open, vst):
         """Test to_json accepts .fch files."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         
-        vst.to_json("character.fch")
+        test_data = {"type": "fch"}
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            result = vst.to_json("character.fch", "output.json")
+        
         mock_run.assert_called_once()
+        assert isinstance(result, dict)
+        assert result == test_data
     
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_from_json_invalid_input(self, mock_run, vst):
@@ -597,22 +650,30 @@ class TestSaveFileProcessor:
         
         assert result == "world.db"
     
+    @patch('builtins.open', create=True)
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     @patch('valheim_save_tools_py.wrapper.shutil.copy2')
     @patch('valheim_save_tools_py.wrapper.os.path.exists')
     @patch('valheim_save_tools_py.wrapper.os.remove')
-    def test_to_json_after_operations(self, mock_remove, mock_exists, mock_copy, mock_run, vst):
+    def test_to_json_after_operations(self, mock_remove, mock_exists, mock_copy, mock_run, mock_open, vst):
         """Test converting to JSON after operations."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
         mock_exists.return_value = True
         
-        result = (vst.process("world.db")
-                     .clean_structures()
-                     .to_json("output.json"))
+        # Mock JSON data that will be returned
+        test_data = {"version": 1, "world": "ProcessedWorld", "cleaned": True}
         
-        assert result == "output.json"
+        with patch('valheim_save_tools_py.wrapper.json.load', return_value=test_data):
+            result = (vst.process("world.db")
+                         .clean_structures()
+                         .to_json("output.json"))
+        
+        # Should return parsed JSON data as dict, not file path
+        assert isinstance(result, dict)
+        assert result == test_data
+        
         # Should have clean_structures and conversion to JSON
         assert any("--cleanStructures" in str(call) for call in mock_run.call_args_list)
         # Last call should be the JSON conversion
