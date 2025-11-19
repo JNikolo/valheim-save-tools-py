@@ -28,8 +28,9 @@ from valheim_save_tools_py import ValheimSaveTools
 
 vst = ValheimSaveTools()
 
-# Convert to JSON
-vst.to_json("world.db")
+# Convert to JSON and get data
+data = vst.to_json("world.db")
+print(f"World version: {data['version']}")
 
 # Add boss defeat
 vst.add_global_key("world.db", "defeated_eikthyr")
@@ -58,8 +59,12 @@ with vst.process("world.db") as p:
 ### Convert Save Files
 
 ```python
-# Binary to JSON
-vst.to_json("world.db", "backup.json")
+# Binary to JSON - returns parsed data
+data = vst.to_json("world.db")
+print(f"World has {len(data.get('globalKeys', []))} global keys")
+
+# Also save to file
+data = vst.to_json("world.db", "backup.json")
 
 # JSON to Binary
 vst.from_json("backup.json", "world.db")

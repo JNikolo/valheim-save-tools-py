@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING**: `to_json()` now returns parsed JSON data as a dictionary instead of file path
+  - Both `ValheimSaveTools.to_json()` and `SaveFileProcessor.to_json()` affected
+  - Allows direct access to save file data without additional file I/O
+  - If `output_file` parameter is provided, still saves to that file
+  - Migration: Replace `path = vst.to_json(...)` with `data = vst.to_json(...)`
+
+### Fixed
+
+- Fixed `UnboundLocalError` in `to_json()` when using explicit output file path
+- Improved temporary file cleanup in `to_json()` method
+
 ## [0.1.0] - 2025-11-16
 
 ### Added

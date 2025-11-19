@@ -5,7 +5,8 @@ import subprocess
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional, List, Dict
+import json
 
 from .exceptions import JarNotFoundError, JavaNotFoundError, CommandExecutionError
 
@@ -119,16 +120,16 @@ class ValheimSaveTools:
     
     # File Conversion Methods
     
-    def to_json(self, input_file: str, output_file: Optional[str] = None) -> str:
+    def to_json(self, input_file: str, output_file: Optional[str] = None) -> Dict:
         """
         Convert Valheim save file to JSON.
         
         Args:
             input_file: Path to .db, .fwl, or .fch file
-            output_file: Path to output JSON file (auto-generated if None)
+            output_file: Path to output JSON file (Optional)
             
         Returns:
-            Path to the created JSON file
+            Parsed JSON data as dictionary. If output_file is provided, also saves to that file.
         """
         if (not self.is_db_file(input_file) 
             and not self.is_fwl_file(input_file) 
@@ -137,12 +138,22 @@ class ValheimSaveTools:
                 f"Input file is not a valid Valheim save file: {input_file} (expected .db, .fwl, or .fch)"
             )
         
+        tmp_path = None
         if output_file is None:
-            output_file = self._auto_output_path(input_file, ".json")
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+            tmp_path = tmp.name
+            output_file = tmp_path
+            tmp.close()
         
         flags = self._build_common_flags()
         self.run_command(input_file, output_file, *flags)
-        return output_file
+        with open(output_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        
+        return data
     
     def from_json(self, input_file: str, output_file: Optional[str] = None) -> str:
         """
@@ -572,7 +583,7 @@ class SaveFileProcessor:
         
         return final_output
     
-    def to_json(self, output_file: Optional[str] = None) -> str:
+    def to_json(self, output_file: Optional[str] = None) -> Dict:
         """
         Execute all operations and convert result to JSON.
         
@@ -580,17 +591,17 @@ class SaveFileProcessor:
             output_file: Path to save JSON result
             
         Returns:
-            Path to the JSON file
+            Parsed JSON data as a dictionary. If output_file is provided, also saves to that file.
         """
         processed_file = self._execute_operations()
         
         # Convert to JSON
-        json_file = self._tools.to_json(processed_file, output_file)
+        json_data = self._tools.to_json(processed_file, output_file)
         
         # Cleanup temp files
         self._cleanup_temp_files()
         
-        return json_file
+        return json_data
     
     def __repr__(self) -> str:
         """String representation of processor."""

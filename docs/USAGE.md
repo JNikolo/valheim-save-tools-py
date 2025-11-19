@@ -52,8 +52,12 @@ Simple, straightforward operations:
 ```python
 vst = ValheimSaveTools()
 
-# File conversion
-vst.to_json("world.db", "backup.json")
+# File conversion - returns parsed data
+data = vst.to_json("world.db")
+print(f"Version: {data['version']}")
+
+# Also save to file
+data = vst.to_json("world.db", "backup.json")
 vst.from_json("backup.json", "world_restored.db")
 
 # Global keys
@@ -88,11 +92,13 @@ result = (vst.process("world.db")
              .add_global_key("defeated_gdking")
              .save("cleaned_world.db"))
 
-# Process and export to JSON
-json_file = (vst.process("world.db")
-                .clean_structures()
-                .reset_world()
-                .to_json("cleaned_world.json"))
+# Process and export to JSON - returns data
+data = (vst.process("world.db")
+           .clean_structures()
+           .reset_world()
+           .to_json("cleaned_world.json"))
+
+print(f"Processed world has {len(data.get('globalKeys', []))} keys")
 
 # Multiple operations, overwrite original
 (vst.process("world.db")

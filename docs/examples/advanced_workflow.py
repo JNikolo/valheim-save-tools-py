@@ -15,8 +15,8 @@ def complete_world_cleanup():
     vst = ValheimSaveTools(verbose=True)
     
     print("Step 1: Creating backup...")
-    backup = vst.to_json("world.db", "world_backup.json")
-    print(f"✓ Backup created: {backup}\n")
+    backup_data = vst.to_json("world.db", "world_backup.json")
+    print(f"✓ Backup created with version: {backup_data.get('version', 'unknown')}\n")
     
     print("Step 2: Listing current global keys...")
     original_keys = vst.list_global_keys("world.db")

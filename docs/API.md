@@ -66,19 +66,19 @@ vst = ValheimSaveTools(jar_path="/path/to/valheim-save-tools.jar")
 ### `to_json()`
 
 ```python
-to_json(input_file: str, output_file: Optional[str] = None) -> str
+to_json(input_file: str, output_file: Optional[str] = None) -> Dict
 ```
 
-Convert Valheim save file to JSON format.
+Convert Valheim save file to JSON format and return parsed data.
 
 **Supported formats:** `.db`, `.fwl`, `.fch`
 
 **Parameters:**
 
 - `input_file` (str): Path to input save file
-- `output_file` (str, optional): Path to output JSON file (auto-generated if not provided)
+- `output_file` (str, optional): Path to output JSON file (if provided, also saves to disk)
 
-**Returns:** Path to the created JSON file
+**Returns:** Dictionary containing the parsed JSON data from the save file
 
 **Raises:**
 
@@ -88,14 +88,17 @@ Convert Valheim save file to JSON format.
 **Example:**
 
 ```python
-# Auto-generate output filename
-vst.to_json("world.db")  # Creates world.json
+# Get JSON data directly
+data = vst.to_json("world.db")
+print(f"World version: {data['version']}")
+print(f"Global keys: {data.get('globalKeys', [])}")
 
-# Explicit output filename
-vst.to_json("world.db", "backup.json")
+# Save to file and get data
+data = vst.to_json("world.db", "backup.json")
 
 # Convert character file
-vst.to_json("character.fch", "character_backup.json")
+char_data = vst.to_json("character.fch")
+print(f"Character name: {char_data.get('name', 'Unknown')}")
 ```
 
 ### `from_json()`
@@ -384,11 +387,23 @@ Execute all operations and save result.
 - If `output_file` is None, overwrites the original file
 - Returns path to saved file
 
-#### `to_json(output_file: Optional[str] = None) -> str`
+#### `to_json(output_file: Optional[str] = None) -> Dict`
 
 Execute all operations and convert result to JSON.
 
-- Returns path to JSON file
+- If `output_file` is provided, also saves the JSON to that file
+- Returns parsed JSON data as a dictionary
+
+**Example:**
+
+```python
+# Get data after cleaning
+data = vst.process("world.db").clean_structures().to_json()
+print(f"Cleaned world data: {data}")
+
+# Also save to file
+data = vst.process("world.db").clean_structures().to_json("output.json")
+```
 
 ---
 
