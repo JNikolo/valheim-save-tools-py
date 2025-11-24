@@ -5,11 +5,16 @@ import subprocess
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional, List, Dict, Union, BinaryIO
+from typing import Optional, List, Dict, Union, BinaryIO, Tuple
 import json
-import io
 
-from .exceptions import JarNotFoundError, JavaNotFoundError, CommandExecutionError
+from .exceptions import (
+    JarNotFoundError,
+    JavaNotFoundError,
+    CommandExecutionError,
+    FileTypeError,
+    TemporaryFileError,
+)
 
 
 class ValheimSaveTools:
@@ -132,7 +137,7 @@ class ValheimSaveTools:
         """
         return hasattr(obj, 'read') and callable(getattr(obj, 'read'))
     
-    def _resolve_input(self, input_source: Union[str, BinaryIO], suffix: str = "") -> tuple[str, bool]:
+    def _resolve_input(self, input_source: Union[str, BinaryIO], suffix: str = "") -> Tuple[str, bool]:
         """
         Resolve input to a file path, creating temp file if needed.
         
@@ -165,7 +170,7 @@ class ValheimSaveTools:
                 tmp.close()
                 if os.path.exists(tmp.name):
                     os.remove(tmp.name)
-                raise ValueError(f"Failed to read from file-like object: {e}")
+                raise TemporaryFileError(f"Failed to read from file-like object: {e}")
         else:
             # Assume it's a file path
             return str(input_source), False
@@ -195,6 +200,133 @@ class ValheimSaveTools:
                 shutil.copy2(file_path, str(output_dest))
             return str(output_dest)
 
+    def _determine_output_path(
+        self,
+        input_file: Union[str, BinaryIO],
+        input_path: str,
+        output_file: Union[str, BinaryIO, None],
+        suffix: str = ".db"
+    ) -> Tuple[str, bool]:
+        """
+        Determine output path and whether it's temporary.
+        
+        Args:
+            input_file: Original input (file path or file-like object)
+            input_path: Resolved input file path
+            output_file: Desired output destination
+            suffix: File suffix for temp file (default: '.db')
+            
+        Returns:
+            Tuple of (output_path, is_temp_file)
+        """
+        if output_file is None:
+            if self._is_file_like(input_file):
+                # For file-like input without output, create temp file
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                tmp.close()
+                return tmp.name, True
+            else:
+                # For path input without output, overwrite input
+                return input_path, False
+        elif self._is_file_like(output_file):
+            # Create temp file for file-like output
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            tmp.close()
+            return tmp.name, True
+        else:
+            return str(output_file), False
+
+    def _handle_output(
+        self,
+        output_path: str,
+        output_file: Union[str, BinaryIO, None],
+        input_file: Union[str, BinaryIO],
+        output_is_temp: bool
+    ) -> Optional[str]:
+        """
+        Handle output file writing and cleanup.
+        
+        Args:
+            output_path: Path to the output file
+            output_file: Desired output destination
+            input_file: Original input (for write-back to file-like input)
+            output_is_temp: Whether output_path is a temporary file
+            
+        Returns:
+            Path to output file if it's a path, None otherwise
+        """
+        result = None
+        
+        if output_file is not None and self._is_file_like(output_file):
+            # Write to file-like object
+            with open(output_path, 'rb') as f:
+                output_file.write(f.read())
+        elif self._is_file_like(input_file) and output_file is None:
+            # Write back to file-like input
+            with open(output_path, 'rb') as f:
+                input_file.seek(0)
+                input_file.write(f.read())
+                input_file.truncate()
+        else:
+            result = output_path
+        
+        # Cleanup temp output file if created
+        if output_is_temp and os.path.exists(output_path):
+            os.remove(output_path)
+        
+        return result
+
+    def _execute_db_operation(
+        self,
+        db_file: Union[str, BinaryIO],
+        output_file: Union[str, BinaryIO, None],
+        operation_name: str,
+        *command_args: str
+    ) -> Optional[str]:
+        """
+        Execute a database file operation with standardized input/output handling.
+        
+        This method eliminates code duplication by handling the common pattern of:
+        1. Resolving input (file path or file-like object)
+        2. Determining output path
+        3. Running the JAR command
+        4. Handling output (writing to file-like objects or returning path)
+        5. Cleaning up temporary files
+        
+        Args:
+            db_file: Path to .db file or file-like object
+            output_file: Path to output file, file-like object, or None
+            operation_name: Name of operation (for error messages)
+            *command_args: Additional arguments to pass to the JAR command
+            
+        Returns:
+            Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
+        """
+        # Resolve input to file path
+        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
+        
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
+                raise FileTypeError(f"Input file is not a valid .db file: {db_path}")
+            
+            # Determine output path
+            output_path, output_is_temp = self._determine_output_path(
+                db_file, db_path, output_file, suffix=".db"
+            )
+            
+            # Run command
+            flags = self._build_common_flags()
+            self.run_command(db_path, output_path, *command_args, *flags)
+            
+            # Handle output and return result
+            return self._handle_output(output_path, output_file, db_file, output_is_temp)
+            
+        finally:
+            # Cleanup temp input file if created
+            if db_is_temp and os.path.exists(db_path):
+                os.remove(db_path)
+
     
     # File Conversion Methods
     
@@ -222,7 +354,7 @@ class ValheimSaveTools:
                 if (not self.is_db_file(input_path) 
                     and not self.is_fwl_file(input_path) 
                     and not self.is_fch_file(input_path)):
-                    raise ValueError(
+                    raise FileTypeError(
                         f"Input file is not a valid Valheim save file: {input_path} (expected .db, .fwl, or .fch)"
                     )
             
@@ -282,7 +414,7 @@ class ValheimSaveTools:
         try:
             # Check file type if path was provided
             if not self._is_file_like(input_file) and not self.is_json_file(input_path):
-                raise ValueError(f"Input file is not a JSON file: {input_path}")
+                raise FileTypeError(f"Input file is not a JSON file: {input_path}")
             
             # Determine output path
             output_is_temp = False
@@ -340,7 +472,7 @@ class ValheimSaveTools:
         try:
             # Check file type if path was provided
             if not self._is_file_like(db_file) and not self.is_db_file(db_path):
-                raise ValueError(f"Input file is not a valid .db file: {db_path}")
+                raise FileTypeError(f"Input file is not a valid .db file: {db_path}")
             
             result = self.run_command(db_path, "--listGlobalKeys")
             # Parse output - format is typically one key per line
@@ -369,64 +501,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        # Resolve input to file path
-        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
-        
-        try:
-            # Check file type if path was provided
-            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
-                raise ValueError(f"Input file is not a valid .db file: {db_path}")
-            
-            # Determine output path
-            output_is_temp = False
-            if output_file is None:
-                if self._is_file_like(db_file):
-                    # For file-like input without output, create temp file
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                    output_path = tmp.name
-                    tmp.close()
-                    output_is_temp = True
-                else:
-                    # For path input without output, overwrite input
-                    output_path = db_path
-            elif self._is_file_like(output_file):
-                # Create temp file for file-like output
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                output_path = tmp.name
-                tmp.close()
-                output_is_temp = True
-            else:
-                output_path = str(output_file)
-            
-            # Run command
-            flags = self._build_common_flags()
-            self.run_command(db_path, output_path, "--addGlobalKey", key, *flags)
-            
-            # Handle output
-            result = None
-            if output_file is not None and self._is_file_like(output_file):
-                # Write to file-like object
-                with open(output_path, 'rb') as f:
-                    output_file.write(f.read())
-            elif self._is_file_like(db_file) and output_file is None:
-                # Write back to file-like input
-                with open(output_path, 'rb') as f:
-                    db_file.seek(0)
-                    db_file.write(f.read())
-                    db_file.truncate()
-            else:
-                result = output_path
-            
-            # Cleanup temp output file if created
-            if output_is_temp and os.path.exists(output_path):
-                os.remove(output_path)
-            
-            return result
-            
-        finally:
-            # Cleanup temp input file if created
-            if db_is_temp and os.path.exists(db_path):
-                os.remove(db_path)
+        return self._execute_db_operation(
+            db_file, output_file, "add_global_key", "--addGlobalKey", key
+        )
     
     def remove_global_key(
         self, 
@@ -445,64 +522,9 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        # Resolve input to file path
-        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
-        
-        try:
-            # Check file type if path was provided
-            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
-                raise ValueError(f"Input file is not a valid .db file: {db_path}")
-            
-            # Determine output path
-            output_is_temp = False
-            if output_file is None:
-                if self._is_file_like(db_file):
-                    # For file-like input without output, create temp file
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                    output_path = tmp.name
-                    tmp.close()
-                    output_is_temp = True
-                else:
-                    # For path input without output, overwrite input
-                    output_path = db_path
-            elif self._is_file_like(output_file):
-                # Create temp file for file-like output
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                output_path = tmp.name
-                tmp.close()
-                output_is_temp = True
-            else:
-                output_path = str(output_file)
-            
-            # Run command
-            flags = self._build_common_flags()
-            self.run_command(db_path, output_path, "--removeGlobalKey", key, *flags)
-            
-            # Handle output
-            result = None
-            if output_file is not None and self._is_file_like(output_file):
-                # Write to file-like object
-                with open(output_path, 'rb') as f:
-                    output_file.write(f.read())
-            elif self._is_file_like(db_file) and output_file is None:
-                # Write back to file-like input
-                with open(output_path, 'rb') as f:
-                    db_file.seek(0)
-                    db_file.write(f.read())
-                    db_file.truncate()
-            else:
-                result = output_path
-            
-            # Cleanup temp output file if created
-            if output_is_temp and os.path.exists(output_path):
-                os.remove(output_path)
-            
-            return result
-            
-        finally:
-            # Cleanup temp input file if created
-            if db_is_temp and os.path.exists(db_path):
-                os.remove(db_path)
+        return self._execute_db_operation(
+            db_file, output_file, "remove_global_key", "--removeGlobalKey", key
+        )
     
     def clear_all_global_keys(
         self, 
@@ -540,70 +562,14 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        # Resolve input to file path
-        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
-        
-        try:
-            # Check file type if path was provided
-            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
-                raise ValueError(f"Input file is not a valid .db file: {db_path}")
-            
-            # Determine output path
-            output_is_temp = False
-            if output_file is None:
-                if self._is_file_like(db_file):
-                    # For file-like input without output, create temp file
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                    output_path = tmp.name
-                    tmp.close()
-                    output_is_temp = True
-                else:
-                    # For path input without output, overwrite input
-                    output_path = db_path
-            elif self._is_file_like(output_file):
-                # Create temp file for file-like output
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                output_path = tmp.name
-                tmp.close()
-                output_is_temp = True
-            else:
-                output_path = str(output_file)
-            
-            # Run command
-            flags = self._build_common_flags()
-            self.run_command(
-                db_path, 
-                output_path, 
-                "--cleanStructures",
-                "--cleanStructuresThreshold", str(threshold),
-                *flags
-            )
-            
-            # Handle output
-            result = None
-            if output_file is not None and self._is_file_like(output_file):
-                # Write to file-like object
-                with open(output_path, 'rb') as f:
-                    output_file.write(f.read())
-            elif self._is_file_like(db_file) and output_file is None:
-                # Write back to file-like input
-                with open(output_path, 'rb') as f:
-                    db_file.seek(0)
-                    db_file.write(f.read())
-                    db_file.truncate()
-            else:
-                result = output_path
-            
-            # Cleanup temp output file if created
-            if output_is_temp and os.path.exists(output_path):
-                os.remove(output_path)
-            
-            return result
-            
-        finally:
-            # Cleanup temp input file if created
-            if db_is_temp and os.path.exists(db_path):
-                os.remove(db_path)
+        return self._execute_db_operation(
+            db_file,
+            output_file,
+            "clean_structures",
+            "--cleanStructures",
+            "--cleanStructuresThreshold",
+            str(threshold)
+        )
     
     def reset_world(
         self, 
@@ -624,68 +590,27 @@ class ValheimSaveTools:
         Returns:
             Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        # Resolve input to file path
-        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
-        
-        try:
-            # Check file type if path was provided
-            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
-                raise ValueError(f"Input file is not a valid .db file: {db_path}")
-            
-            # If clean_first, run clean_structures as preprocessor
-            if clean_first:
-                db_path = self.clean_structures(db_path, db_path, clean_threshold)
-            
-            # Determine output path
-            output_is_temp = False
-            if output_file is None:
-                if self._is_file_like(db_file):
-                    # For file-like input without output, create temp file
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                    output_path = tmp.name
-                    tmp.close()
-                    output_is_temp = True
-                else:
-                    # For path input without output, overwrite input
-                    output_path = db_path
-            elif self._is_file_like(output_file):
-                # Create temp file for file-like output
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-                output_path = tmp.name
-                tmp.close()
-                output_is_temp = True
-            else:
-                output_path = str(output_file)
-            
-            # Run command
-            flags = self._build_common_flags()
-            self.run_command(db_path, output_path, "--resetWorld", *flags)
-            
-            # Handle output
-            result = None
-            if output_file is not None and self._is_file_like(output_file):
-                # Write to file-like object
-                with open(output_path, 'rb') as f:
-                    output_file.write(f.read())
-            elif self._is_file_like(db_file) and output_file is None:
-                # Write back to file-like input
-                with open(output_path, 'rb') as f:
-                    db_file.seek(0)
-                    db_file.write(f.read())
-                    db_file.truncate()
-            else:
-                result = output_path
-            
-            # Cleanup temp output file if created
-            if output_is_temp and os.path.exists(output_path):
-                os.remove(output_path)
-            
-            return result
-            
-        finally:
-            # Cleanup temp input file if created
-            if db_is_temp and os.path.exists(db_path):
-                os.remove(db_path)
+        # If clean_first, run clean_structures as preprocessor
+        if clean_first:
+            # Resolve input to path for preprocessing
+            db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
+            try:
+                # Clean structures in-place
+                self.clean_structures(db_path, db_path, clean_threshold)
+                # Now run reset_world on the cleaned file
+                result = self._execute_db_operation(
+                    db_path, output_file, "reset_world", "--resetWorld"
+                )
+                return result
+            finally:
+                # Cleanup temp input file if created
+                if db_is_temp and os.path.exists(db_path):
+                    os.remove(db_path)
+        else:
+            # Direct reset without cleaning
+            return self._execute_db_operation(
+                db_file, output_file, "reset_world", "--resetWorld"
+            )
     
     # File Type Detection Helpers
     
@@ -817,7 +742,7 @@ class SaveFileProcessor:
             input_file: Path to input file
         """
         if not ValheimSaveTools.is_db_file(input_file):
-            raise ValueError(f"{input_file} is not a valid .db file")
+            raise FileTypeError(f"{input_file} is not a valid .db file")
         
         self._tools = tools
         self._input_file = input_file

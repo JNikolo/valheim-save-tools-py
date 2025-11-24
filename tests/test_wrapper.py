@@ -9,7 +9,8 @@ from valheim_save_tools_py import ValheimSaveTools
 from valheim_save_tools_py.exceptions import (
     JarNotFoundError,
     JavaNotFoundError,
-    CommandExecutionError
+    CommandExecutionError,
+    FileTypeError,
 )
 
 
@@ -462,7 +463,7 @@ class TestInputValidation:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_to_json_invalid_input(self, mock_run, vst):
         """Test to_json rejects invalid input files."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.to_json("world.txt")
         
         assert "not a valid Valheim save file" in str(exc_info.value)
@@ -518,7 +519,7 @@ class TestInputValidation:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_from_json_invalid_input(self, mock_run, vst):
         """Test from_json rejects non-JSON files."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.from_json("world.db")
         
         assert "not a JSON file" in str(exc_info.value)
@@ -526,7 +527,7 @@ class TestInputValidation:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_list_global_keys_invalid_input(self, mock_run, vst):
         """Test list_global_keys rejects non-.db files."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.list_global_keys("world.json")
         
         assert "not a valid .db file" in str(exc_info.value)
@@ -534,7 +535,7 @@ class TestInputValidation:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_add_global_key_invalid_input(self, mock_run, vst):
         """Test add_global_key rejects non-.db files."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.add_global_key("world.fwl", "key")
         
         assert "not a valid .db file" in str(exc_info.value)
@@ -542,7 +543,7 @@ class TestInputValidation:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_clean_structures_invalid_input(self, mock_run, vst):
         """Test clean_structures rejects non-.db files."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.clean_structures("world.json")
         
         assert "not a valid .db file" in str(exc_info.value)
@@ -550,7 +551,7 @@ class TestInputValidation:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_reset_world_invalid_input(self, mock_run, vst):
         """Test reset_world rejects non-.db files."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.reset_world("character.fch")
         
         assert "not a valid .db file" in str(exc_info.value)
@@ -570,7 +571,7 @@ class TestSaveFileProcessor:
     @patch('valheim_save_tools_py.wrapper.subprocess.run')
     def test_process_validates_db_file(self, mock_run, vst):
         """Test process() validates .db file."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(FileTypeError) as exc_info:
             vst.process("world.json")
         
         assert "not a valid .db file" in str(exc_info.value)
