@@ -67,7 +67,10 @@ vst = ValheimSaveTools(jar_path="/path/to/valheim-save-tools.jar")
 ### `to_json()`
 
 ```python
-to_json(input_file: str, output_file: Optional[str] = None) -> Dict
+to_json(
+    input_file: Union[str, BinaryIO],
+    output_file: Union[str, BinaryIO, None] = None
+) -> Dict
 ```
 
 Convert Valheim save file to JSON format and return parsed data.
@@ -76,8 +79,8 @@ Convert Valheim save file to JSON format and return parsed data.
 
 **Parameters:**
 
-- `input_file` (str): Path to input save file
-- `output_file` (str, optional): Path to output JSON file (if provided, also saves to disk)
+- `input_file` (str | BinaryIO): Path to input save file or file-like object (e.g., BytesIO)
+- `output_file` (str | BinaryIO | None, optional): Path to output JSON file, file-like object, or None
 
 **Returns:** Dictionary containing the parsed JSON data from the save file
 
@@ -100,22 +103,42 @@ data = vst.to_json("world.db", "backup.json")
 # Convert character file
 char_data = vst.to_json("character.fch")
 print(f"Character name: {char_data.get('name', 'Unknown')}")
+
+# Using file-like objects (BytesIO)
+from io import BytesIO
+
+# Read from BytesIO
+with open("world.db", "rb") as f:
+    db_data = BytesIO(f.read())
+data = vst.to_json(db_data)
+
+# Write to BytesIO
+json_output = BytesIO()
+data = vst.to_json("world.db", json_output)
+json_output.seek(0)
+json_content = json_output.read()
 ```
 
 ### `from_json()`
 
 ```python
-from_json(input_file: str, output_file: Optional[str] = None) -> str
+from_json(
+    input_file: Union[str, BinaryIO],
+    output_file: Union[str, BinaryIO, None] = None
+) -> Union[str, None]
 ```
 
 Convert JSON back to binary save format.
 
 **Parameters:**
 
-- `input_file` (str): Path to input JSON file
-- `output_file` (str, optional): Path to output save file (auto-generated if not provided)
+- `input_file` (str | BinaryIO): Path to input JSON file or file-like object
+- `output_file` (str | BinaryIO | None, optional): Path to output save file, file-like object, or None (auto-generated if None and input is a path)
 
-**Returns:** Path to the created save file
+**Returns:**
+
+- Path to the created save file (if output_file is a path or None)
+- None (if output_file is a file-like object)
 
 **Raises:**
 
@@ -130,6 +153,22 @@ vst.from_json("world.json")  # Creates world.db
 
 # Explicit output filename
 vst.from_json("backup.json", "world_restored.db")
+
+# Using file-like objects
+from io import BytesIO
+
+# Read JSON from BytesIO
+json_data = BytesIO(b'{"version": 34, ...}')
+result_path = vst.from_json(json_data, "world.db")
+
+# Write to BytesIO
+with open("backup.json", "rb") as f:
+    json_input = BytesIO(f.read())
+
+db_output = BytesIO()
+vst.from_json(json_input, db_output)
+db_output.seek(0)
+# Now db_output contains the .db file data
 ```
 
 ---

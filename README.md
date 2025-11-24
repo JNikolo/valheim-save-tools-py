@@ -110,6 +110,36 @@ for item in items:
     print(f"Equipped: {item['equipped']}")
 ```
 
+### Use File-Like Objects
+
+```python
+from io import BytesIO
+
+# Process files in memory without disk I/O
+with open("world.db", "rb") as f:
+    db_data = BytesIO(f.read())
+
+# Convert to JSON
+json_output = BytesIO()
+data = vst.to_json(db_data, json_output)
+
+# Modify in-place
+db_data.seek(0)
+vst.add_global_key(db_data, "defeated_eikthyr")
+
+# Save back to file
+with open("world_modified.db", "wb") as f:
+    db_data.seek(0)
+    f.write(db_data.read())
+```
+
+**Benefits:**
+
+- Process files in memory without disk I/O
+- Better integration with web frameworks
+- Easier testing with mock data
+- Work with network streams or uploaded files
+
 ## Requirements
 
 - Python 3.8 or higher

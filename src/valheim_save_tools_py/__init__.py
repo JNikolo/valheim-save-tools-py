@@ -9,7 +9,7 @@ from .exceptions import (
 )
 from .valheimItemReader import (parse_items_from_base64, ValheimItemReader)
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "ValheimSaveTools",
     "SaveFileProcessor",

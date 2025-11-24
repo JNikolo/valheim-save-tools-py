@@ -112,6 +112,34 @@ python advanced_workflow.py migrate
 python advanced_workflow.py batch
 ```
 
+### 6. `file_like_objects.py` - Using File-Like Objects
+
+Demonstrates using file-like objects (BytesIO, file handles) instead of file paths.
+
+**Key features:**
+
+- Convert files to/from JSON using BytesIO
+- In-memory processing without temporary files
+- Mixing file paths and file-like objects
+- Stream processing
+- Reading from BytesIO, writing to files
+- Reading from files, writing to BytesIO
+- In-place modification of file-like objects
+
+**Usage:**
+
+```bash
+python file_like_objects.py
+```
+
+**Benefits of file-like objects:**
+
+- Process files in memory without disk I/O
+- Work with network streams or uploaded files
+- Better integration with web frameworks
+- Easier testing with mock data
+- More flexible data pipelines
+
 ## Common Patterns
 
 ### Pattern 1: Simple Operation
@@ -157,6 +185,30 @@ vst.clean_structures("world.db")
 
 # Restore if needed
 # vst.from_json("backup.json", "world.db")
+```
+
+### Pattern 5: File-Like Objects (In-Memory Processing)
+
+```python
+from io import BytesIO
+vst = ValheimSaveTools()
+
+# Read from file, process in memory
+with open("world.db", "rb") as f:
+    db_data = BytesIO(f.read())
+
+# Convert to JSON in memory
+json_output = BytesIO()
+json_data = vst.to_json(db_data, json_output)
+
+# Modify in-place
+db_data.seek(0)
+vst.add_global_key(db_data, "defeated_eikthyr")
+
+# Write back to file
+with open("world_modified.db", "wb") as f:
+    db_data.seek(0)
+    f.write(db_data.read())
 ```
 
 ## File Types

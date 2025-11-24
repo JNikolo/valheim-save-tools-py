@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **File-like object support** - All methods now accept file-like objects (BytesIO, file handles) in addition to file paths
+  - `to_json()`, `from_json()` - Convert to/from JSON using BytesIO
+  - `list_global_keys()` - List keys from file-like objects
+  - `add_global_key()`, `remove_global_key()`, `clear_all_global_keys()` - Modify keys in memory
+  - `clean_structures()`, `reset_world()` - Process files in memory
+  - In-place modification support for file-like objects
+  - Mix file paths and file-like objects in workflows
+- New example: `file_like_objects.py` demonstrating in-memory processing
+- Comprehensive test suite for file-like object support (15 new tests)
+- Updated documentation with file-like object examples in README, API docs, and examples
+
+### Changed
+
+- Method signatures updated to accept `Union[str, BinaryIO]` for file inputs/outputs
+- Return types updated: methods return `None` when writing to file-like objects
+- Added `io` module import for file-like object detection
+
 ## [0.3.0] - 2025-11-23
 
 ### Added

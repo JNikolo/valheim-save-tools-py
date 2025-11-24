@@ -5,8 +5,9 @@ import subprocess
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union, BinaryIO
 import json
+import io
 
 from .exceptions import JarNotFoundError, JavaNotFoundError, CommandExecutionError
 
@@ -118,212 +119,573 @@ class ValheimSaveTools:
         input_path = Path(input_file)
         return str(input_path.with_suffix(new_extension))
     
+    @staticmethod
+    def _is_file_like(obj) -> bool:
+        """
+        Check if object is file-like (has read method).
+        
+        Args:
+            obj: Object to check
+            
+        Returns:
+            True if object has read method
+        """
+        return hasattr(obj, 'read') and callable(getattr(obj, 'read'))
+    
+    def _resolve_input(self, input_source: Union[str, BinaryIO], suffix: str = "") -> tuple[str, bool]:
+        """
+        Resolve input to a file path, creating temp file if needed.
+        
+        Args:
+            input_source: File path or file-like object
+            suffix: File suffix for temp file (e.g., '.db', '.json')
+            
+        Returns:
+            Tuple of (file_path, is_temp_file)
+        """
+        if self._is_file_like(input_source):
+            # Create temp file and write content
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            try:
+                # Ensure we're reading in binary mode
+                if hasattr(input_source, 'mode') and 'b' not in input_source.mode:
+                    # Text mode file-like object
+                    content = input_source.read()
+                    if isinstance(content, str):
+                        tmp.write(content.encode('utf-8'))
+                    else:
+                        tmp.write(content)
+                else:
+                    # Binary mode or BytesIO
+                    content = input_source.read()
+                    tmp.write(content)
+                tmp.close()
+                return tmp.name, True
+            except Exception as e:
+                tmp.close()
+                if os.path.exists(tmp.name):
+                    os.remove(tmp.name)
+                raise ValueError(f"Failed to read from file-like object: {e}")
+        else:
+            # Assume it's a file path
+            return str(input_source), False
+    
+    def _write_output(self, file_path: str, output_dest: Union[str, BinaryIO, None]) -> Optional[str]:
+        """
+        Write file content to output destination.
+        
+        Args:
+            file_path: Path to source file
+            output_dest: Destination (file path, file-like object, or None)
+            
+        Returns:
+            Output file path if output_dest was a path, None otherwise
+        """
+        if output_dest is None:
+            return None
+        
+        if self._is_file_like(output_dest):
+            # Write to file-like object
+            with open(file_path, 'rb') as f:
+                output_dest.write(f.read())
+            return None
+        else:
+            # It's a file path, copy the file
+            if file_path != str(output_dest):
+                shutil.copy2(file_path, str(output_dest))
+            return str(output_dest)
+
+    
     # File Conversion Methods
     
-    def to_json(self, input_file: str, output_file: Optional[str] = None) -> Dict:
+    def to_json(
+        self, 
+        input_file: Union[str, BinaryIO], 
+        output_file: Union[str, BinaryIO, None] = None
+    ) -> Dict:
         """
         Convert Valheim save file to JSON.
         
         Args:
-            input_file: Path to .db, .fwl, or .fch file
-            output_file: Path to output JSON file (Optional)
+            input_file: Path to .db, .fwl, or .fch file, or file-like object
+            output_file: Path to output JSON file, file-like object, or None
             
         Returns:
             Parsed JSON data as dictionary. If output_file is provided, also saves to that file.
         """
-        if (not self.is_db_file(input_file) 
-            and not self.is_fwl_file(input_file) 
-            and not self.is_fch_file(input_file)):
-            raise ValueError(
-                f"Input file is not a valid Valheim save file: {input_file} (expected .db, .fwl, or .fch)"
-            )
+        # Resolve input to file path
+        input_path, input_is_temp = self._resolve_input(input_file, suffix=".db")
         
-        tmp_path = None
-        if output_file is None:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-            tmp_path = tmp.name
-            output_file = tmp_path
-            tmp.close()
-        
-        flags = self._build_common_flags()
-        self.run_command(input_file, output_file, *flags)
-        with open(output_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        
-        return data
+        try:
+            # Check file type based on path if available
+            if not self._is_file_like(input_file):
+                if (not self.is_db_file(input_path) 
+                    and not self.is_fwl_file(input_path) 
+                    and not self.is_fch_file(input_path)):
+                    raise ValueError(
+                        f"Input file is not a valid Valheim save file: {input_path} (expected .db, .fwl, or .fch)"
+                    )
+            
+            # Determine output path
+            tmp_output = None
+            if output_file is None or self._is_file_like(output_file):
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+                tmp_output = tmp.name
+                tmp.close()
+                output_path = tmp_output
+            else:
+                output_path = str(output_file)
+            
+            # Run conversion
+            flags = self._build_common_flags()
+            self.run_command(input_path, output_path, *flags)
+            
+            # Read JSON data
+            with open(output_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Handle output
+            if output_file is not None and self._is_file_like(output_file):
+                # Write to file-like object
+                with open(output_path, 'rb') as f:
+                    output_file.write(f.read())
+            
+            # Cleanup temp files
+            if tmp_output and os.path.exists(tmp_output):
+                os.remove(tmp_output)
+            
+            return data
+            
+        finally:
+            # Cleanup temp input file if created
+            if input_is_temp and os.path.exists(input_path):
+                os.remove(input_path)
     
-    def from_json(self, input_file: str, output_file: Optional[str] = None) -> str:
+    def from_json(
+        self, 
+        input_file: Union[str, BinaryIO], 
+        output_file: Union[str, BinaryIO, None] = None
+    ) -> Union[str, None]:
         """
         Convert JSON back to Valheim save file.
         
         Args:
-            input_file: Path to JSON file
-            output_file: Path to output save file (auto-generated if None)
+            input_file: Path to JSON file or file-like object
+            output_file: Path to output save file, file-like object, or None (auto-generated if None)
             
         Returns:
-            Path to the created save file
+            Path to the created save file (if output_file is a path), or None (if output_file is file-like)
         """
-        if not self.is_json_file(input_file):
-            raise ValueError(f"Input file is not a JSON file: {input_file}")
+        # Resolve input to file path
+        input_path, input_is_temp = self._resolve_input(input_file, suffix=".json")
         
-        if output_file is None:
-            # Try to detect original extension from JSON content or default to .db
-            output_file = self._auto_output_path(input_file, ".db")
-        
-        flags = self._build_common_flags()
-        self.run_command(input_file, output_file, *flags)
-        return output_file
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(input_file) and not self.is_json_file(input_path):
+                raise ValueError(f"Input file is not a JSON file: {input_path}")
+            
+            # Determine output path
+            output_is_temp = False
+            if output_file is None:
+                # Auto-generate output path
+                output_path = self._auto_output_path(input_path, ".db")
+            elif self._is_file_like(output_file):
+                # Create temp file for file-like output
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                output_path = tmp.name
+                tmp.close()
+                output_is_temp = True
+            else:
+                output_path = str(output_file)
+            
+            # Run conversion
+            flags = self._build_common_flags()
+            self.run_command(input_path, output_path, *flags)
+            
+            # Handle output
+            result = None
+            if output_file is not None and self._is_file_like(output_file):
+                # Write to file-like object
+                with open(output_path, 'rb') as f:
+                    output_file.write(f.read())
+            else:
+                result = output_path
+            
+            # Cleanup temp output file if created
+            if output_is_temp and os.path.exists(output_path):
+                os.remove(output_path)
+            
+            return result
+            
+        finally:
+            # Cleanup temp input file if created
+            if input_is_temp and os.path.exists(input_path):
+                os.remove(input_path)
     
     # Global Keys Operations
     
-    def list_global_keys(self, db_file: str) -> List[str]:
+    def list_global_keys(self, db_file: Union[str, BinaryIO]) -> List[str]:
         """
         List all global keys in a world database file.
         
         Args:
-            db_file: Path to .db file
+            db_file: Path to .db file or file-like object
             
         Returns:
             List of global key names
         """
-        if not self.is_db_file(db_file):
-            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        # Resolve input to file path
+        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
         
-        result = self.run_command(db_file, "--listGlobalKeys")
-        # Parse output - format is typically one key per line
-        keys = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        return keys
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
+                raise ValueError(f"Input file is not a valid .db file: {db_path}")
+            
+            result = self.run_command(db_path, "--listGlobalKeys")
+            # Parse output - format is typically one key per line
+            keys = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            return keys
+            
+        finally:
+            # Cleanup temp file if created
+            if db_is_temp and os.path.exists(db_path):
+                os.remove(db_path)
     
-    def add_global_key(self, db_file: str, key: str, output_file: Optional[str] = None) -> str:
+    def add_global_key(
+        self, 
+        db_file: Union[str, BinaryIO], 
+        key: str, 
+        output_file: Union[str, BinaryIO, None] = None
+    ) -> Optional[str]:
         """
         Add a global key to a world database file.
         
         Args:
-            db_file: Path to .db file
+            db_file: Path to .db file or file-like object
             key: Global key to add
-            output_file: Path to output file (overwrites input if None)
+            output_file: Path to output file, file-like object, or None (overwrites input if None and input is path)
             
         Returns:
-            Path to the modified file
+            Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        if not self.is_db_file(db_file):
-            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        # Resolve input to file path
+        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
         
-        if output_file is None:
-            output_file = db_file
-        
-        flags = self._build_common_flags()
-        self.run_command(db_file, output_file, "--addGlobalKey", key, *flags)
-        return output_file
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
+                raise ValueError(f"Input file is not a valid .db file: {db_path}")
+            
+            # Determine output path
+            output_is_temp = False
+            if output_file is None:
+                if self._is_file_like(db_file):
+                    # For file-like input without output, create temp file
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                    output_path = tmp.name
+                    tmp.close()
+                    output_is_temp = True
+                else:
+                    # For path input without output, overwrite input
+                    output_path = db_path
+            elif self._is_file_like(output_file):
+                # Create temp file for file-like output
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                output_path = tmp.name
+                tmp.close()
+                output_is_temp = True
+            else:
+                output_path = str(output_file)
+            
+            # Run command
+            flags = self._build_common_flags()
+            self.run_command(db_path, output_path, "--addGlobalKey", key, *flags)
+            
+            # Handle output
+            result = None
+            if output_file is not None and self._is_file_like(output_file):
+                # Write to file-like object
+                with open(output_path, 'rb') as f:
+                    output_file.write(f.read())
+            elif self._is_file_like(db_file) and output_file is None:
+                # Write back to file-like input
+                with open(output_path, 'rb') as f:
+                    db_file.seek(0)
+                    db_file.write(f.read())
+                    db_file.truncate()
+            else:
+                result = output_path
+            
+            # Cleanup temp output file if created
+            if output_is_temp and os.path.exists(output_path):
+                os.remove(output_path)
+            
+            return result
+            
+        finally:
+            # Cleanup temp input file if created
+            if db_is_temp and os.path.exists(db_path):
+                os.remove(db_path)
     
-    def remove_global_key(self, db_file: str, key: str, output_file: Optional[str] = None) -> str:
+    def remove_global_key(
+        self, 
+        db_file: Union[str, BinaryIO], 
+        key: str, 
+        output_file: Union[str, BinaryIO, None] = None
+    ) -> Optional[str]:
         """
         Remove a global key from a world database file.
         
         Args:
-            db_file: Path to .db file
+            db_file: Path to .db file or file-like object
             key: Global key to remove (use 'all' to remove all keys)
-            output_file: Path to output file (overwrites input if None)
+            output_file: Path to output file, file-like object, or None (overwrites input if None and input is path)
             
         Returns:
-            Path to the modified file
+            Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        if not self.is_db_file(db_file):
-            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        # Resolve input to file path
+        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
         
-        if output_file is None:
-            output_file = db_file
-        
-        flags = self._build_common_flags()
-        self.run_command(db_file, output_file, "--removeGlobalKey", key, *flags)
-        return output_file
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
+                raise ValueError(f"Input file is not a valid .db file: {db_path}")
+            
+            # Determine output path
+            output_is_temp = False
+            if output_file is None:
+                if self._is_file_like(db_file):
+                    # For file-like input without output, create temp file
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                    output_path = tmp.name
+                    tmp.close()
+                    output_is_temp = True
+                else:
+                    # For path input without output, overwrite input
+                    output_path = db_path
+            elif self._is_file_like(output_file):
+                # Create temp file for file-like output
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                output_path = tmp.name
+                tmp.close()
+                output_is_temp = True
+            else:
+                output_path = str(output_file)
+            
+            # Run command
+            flags = self._build_common_flags()
+            self.run_command(db_path, output_path, "--removeGlobalKey", key, *flags)
+            
+            # Handle output
+            result = None
+            if output_file is not None and self._is_file_like(output_file):
+                # Write to file-like object
+                with open(output_path, 'rb') as f:
+                    output_file.write(f.read())
+            elif self._is_file_like(db_file) and output_file is None:
+                # Write back to file-like input
+                with open(output_path, 'rb') as f:
+                    db_file.seek(0)
+                    db_file.write(f.read())
+                    db_file.truncate()
+            else:
+                result = output_path
+            
+            # Cleanup temp output file if created
+            if output_is_temp and os.path.exists(output_path):
+                os.remove(output_path)
+            
+            return result
+            
+        finally:
+            # Cleanup temp input file if created
+            if db_is_temp and os.path.exists(db_path):
+                os.remove(db_path)
     
-    def clear_all_global_keys(self, db_file: str, output_file: Optional[str] = None) -> str:
+    def clear_all_global_keys(
+        self, 
+        db_file: Union[str, BinaryIO], 
+        output_file: Union[str, BinaryIO, None] = None
+    ) -> Optional[str]:
         """
         Remove all global keys from a world database file.
         
         Args:
-            db_file: Path to .db file
-            output_file: Path to output file (overwrites input if None)
+            db_file: Path to .db file or file-like object
+            output_file: Path to output file, file-like object, or None (overwrites input if None and input is path)
             
         Returns:
-            Path to the modified file
+            Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        if not self.is_db_file(db_file):
-            raise ValueError(f"Input file is not a valid .db file: {db_file}")
-        
         return self.remove_global_key(db_file, "all", output_file)
     
     # Structure Processing Methods
     
     def clean_structures(
         self, 
-        db_file: str, 
-        output_file: Optional[str] = None,
+        db_file: Union[str, BinaryIO], 
+        output_file: Union[str, BinaryIO, None] = None,
         threshold: int = 25
-    ) -> str:
+    ) -> Optional[str]:
         """
         Clean up player-built structures smaller than threshold.
         
         Args:
-            db_file: Path to .db file
-            output_file: Path to output file (overwrites input if None)
+            db_file: Path to .db file or file-like object
+            output_file: Path to output file, file-like object, or None (overwrites input if None and input is path)
             threshold: Minimum structures to consider as a base (default 25)
             
         Returns:
-            Path to the modified file
+            Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        if not self.is_db_file(db_file):
-            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        # Resolve input to file path
+        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
         
-        if output_file is None:
-            output_file = db_file
-        
-        flags = self._build_common_flags()
-        self.run_command(
-            db_file, 
-            output_file, 
-            "--cleanStructures",
-            "--cleanStructuresThreshold", str(threshold),
-            *flags
-        )
-        return output_file
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
+                raise ValueError(f"Input file is not a valid .db file: {db_path}")
+            
+            # Determine output path
+            output_is_temp = False
+            if output_file is None:
+                if self._is_file_like(db_file):
+                    # For file-like input without output, create temp file
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                    output_path = tmp.name
+                    tmp.close()
+                    output_is_temp = True
+                else:
+                    # For path input without output, overwrite input
+                    output_path = db_path
+            elif self._is_file_like(output_file):
+                # Create temp file for file-like output
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                output_path = tmp.name
+                tmp.close()
+                output_is_temp = True
+            else:
+                output_path = str(output_file)
+            
+            # Run command
+            flags = self._build_common_flags()
+            self.run_command(
+                db_path, 
+                output_path, 
+                "--cleanStructures",
+                "--cleanStructuresThreshold", str(threshold),
+                *flags
+            )
+            
+            # Handle output
+            result = None
+            if output_file is not None and self._is_file_like(output_file):
+                # Write to file-like object
+                with open(output_path, 'rb') as f:
+                    output_file.write(f.read())
+            elif self._is_file_like(db_file) and output_file is None:
+                # Write back to file-like input
+                with open(output_path, 'rb') as f:
+                    db_file.seek(0)
+                    db_file.write(f.read())
+                    db_file.truncate()
+            else:
+                result = output_path
+            
+            # Cleanup temp output file if created
+            if output_is_temp and os.path.exists(output_path):
+                os.remove(output_path)
+            
+            return result
+            
+        finally:
+            # Cleanup temp input file if created
+            if db_is_temp and os.path.exists(db_path):
+                os.remove(db_path)
     
     def reset_world(
         self, 
-        db_file: str, 
-        output_file: Optional[str] = None,
+        db_file: Union[str, BinaryIO], 
+        output_file: Union[str, BinaryIO, None] = None,
         clean_first: bool = False,
         clean_threshold: int = 25
-    ) -> str:
+    ) -> Optional[str]:
         """
         Reset world zones without player structures.
         
         Args:
-            db_file: Path to .db file
-            output_file: Path to output file (overwrites input if None)
+            db_file: Path to .db file or file-like object
+            output_file: Path to output file, file-like object, or None (overwrites input if None and input is path)
             clean_first: Run clean_structures before reset (recommended)
             clean_threshold: Threshold for clean_structures if clean_first=True
             
         Returns:
-            Path to the modified file
+            Path to the modified file (if output is a path), or None (if output is file-like or input was file-like)
         """
-        if not self.is_db_file(db_file):
-            raise ValueError(f"Input file is not a valid .db file: {db_file}")
+        # Resolve input to file path
+        db_path, db_is_temp = self._resolve_input(db_file, suffix=".db")
         
-        if output_file is None:
-            output_file = db_file
-        
-        # If clean_first, run clean_structures as preprocessor
-        if clean_first:
-            db_file = self.clean_structures(db_file, db_file, clean_threshold)
-        
-        flags = self._build_common_flags()
-        self.run_command(db_file, output_file, "--resetWorld", *flags)
-        return output_file
+        try:
+            # Check file type if path was provided
+            if not self._is_file_like(db_file) and not self.is_db_file(db_path):
+                raise ValueError(f"Input file is not a valid .db file: {db_path}")
+            
+            # If clean_first, run clean_structures as preprocessor
+            if clean_first:
+                db_path = self.clean_structures(db_path, db_path, clean_threshold)
+            
+            # Determine output path
+            output_is_temp = False
+            if output_file is None:
+                if self._is_file_like(db_file):
+                    # For file-like input without output, create temp file
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                    output_path = tmp.name
+                    tmp.close()
+                    output_is_temp = True
+                else:
+                    # For path input without output, overwrite input
+                    output_path = db_path
+            elif self._is_file_like(output_file):
+                # Create temp file for file-like output
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+                output_path = tmp.name
+                tmp.close()
+                output_is_temp = True
+            else:
+                output_path = str(output_file)
+            
+            # Run command
+            flags = self._build_common_flags()
+            self.run_command(db_path, output_path, "--resetWorld", *flags)
+            
+            # Handle output
+            result = None
+            if output_file is not None and self._is_file_like(output_file):
+                # Write to file-like object
+                with open(output_path, 'rb') as f:
+                    output_file.write(f.read())
+            elif self._is_file_like(db_file) and output_file is None:
+                # Write back to file-like input
+                with open(output_path, 'rb') as f:
+                    db_file.seek(0)
+                    db_file.write(f.read())
+                    db_file.truncate()
+            else:
+                result = output_path
+            
+            # Cleanup temp output file if created
+            if output_is_temp and os.path.exists(output_path):
+                os.remove(output_path)
+            
+            return result
+            
+        finally:
+            # Cleanup temp input file if created
+            if db_is_temp and os.path.exists(db_path):
+                os.remove(db_path)
     
     # File Type Detection Helpers
     
