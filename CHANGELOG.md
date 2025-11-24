@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-11-23
+
+### Added
+
+- New `ValheimItemReader` class for parsing binary item data
+  - `parse_items_from_base64()` - Parse base64-encoded inventory data
+  - Binary data reader methods: `read_byte()`, `read_int32()`, `read_int64()`, `read_float()`, `read_bool()`, `read_string()`
+  - `read_item()` - Parse complete Valheim item structures
+- Comprehensive test suite for item reader (19 additional tests)
+  - Unit tests for all binary parsing methods
+  - Tests for single and multiple item parsing
+  - Edge case and error handling tests
+- Item reader module exported in public API
+
 ## [0.2.0] - 2025-11-19
 
 ### Changed
@@ -76,3 +90,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [0.1.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.1.0
 [0.2.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.2.0
+[0.3.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.3.0
