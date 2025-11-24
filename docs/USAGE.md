@@ -13,6 +13,7 @@ Detailed usage patterns and examples for Valheim Save Tools Python API.
 - [Basic Usage](#basic-usage)
 - [Usage Patterns](#usage-patterns)
 - [File Types](#file-types)
+- [Item Parsing](#item-parsing)
 - [Common Workflows](#common-workflows)
 - [Best Practices](#best-practices)
 - [Tips and Tricks](#tips-and-tricks)
@@ -199,6 +200,171 @@ vst.to_json("character.fch") # -> character.json
 
 # Convert back to binary
 vst.from_json("world.json")  # -> world.db
+```
+
+---
+
+## Item Parsing
+
+Parse and analyze Valheim inventory and item data from base64-encoded binary format.
+
+### Basic Item Parsing
+
+```python
+from valheim_save_tools_py import parse_items_from_base64
+
+# Parse inventory data (typically from JSON save files)
+base64_data = "AQAAAAIAAAAKQXhlQnJvbnpl..."
+items = parse_items_from_base64(base64_data)
+
+# Display all items
+for i, item in enumerate(items, 1):
+    print(f"{i}. {item['name']}")
+    print(f"   Stack: {item['stack']}")
+    print(f"   Durability: {item['durability']:.1f}%")
+    print(f"   Quality: {item['quality']}")
+    print(f"   Position: ({item['pos_x']}, {item['pos_y']})")
+    if item['equipped']:
+        print(f"   [EQUIPPED]")
+    if item['crafter_name']:
+        print(f"   Crafted by: {item['crafter_name']}")
+```
+
+### Extract Item Data from Save Files
+
+```python
+from valheim_save_tools_py import ValheimSaveTools, parse_items_from_base64
+
+vst = ValheimSaveTools()
+
+# Convert character file to JSON
+char_data = vst.to_json("MyCharacter.fch")
+
+# Extract and parse inventory (if available in the JSON)
+if 'inventory' in char_data:
+    inventory_b64 = char_data['inventory']
+    items = parse_items_from_base64(inventory_b64)
+
+    print(f"Character has {len(items)} items")
+
+    # List equipped gear
+    equipped = [item for item in items if item['equipped']]
+    print("\nEquipped items:")
+    for item in equipped:
+        print(f"  - {item['name']} (Quality {item['quality']})")
+```
+
+### Filter and Analyze Items
+
+```python
+from valheim_save_tools_py import parse_items_from_base64
+
+items = parse_items_from_base64(base64_data)
+
+# Find all weapons
+weapons = [item for item in items if any(
+    w in item['name'] for w in ['Sword', 'Axe', 'Bow', 'Spear', 'Mace']
+)]
+
+# Find damaged items
+damaged = [item for item in items if item['durability'] < 50.0]
+
+# Find high-quality items
+high_quality = [item for item in items if item['quality'] >= 4]
+
+# Calculate total weight (example - you'd need item weights)
+stacks = sum(item['stack'] for item in items)
+print(f"Total item stacks: {stacks}")
+
+# Find items by crafter
+player_crafted = [item for item in items if item['crafter_name'] == 'PlayerName']
+```
+
+### Inventory Statistics
+
+```python
+from valheim_save_tools_py import parse_items_from_base64
+from collections import Counter
+
+items = parse_items_from_base64(base64_data)
+
+# Count item types
+item_counts = Counter(item['name'] for item in items)
+print("\nInventory breakdown:")
+for item_name, count in item_counts.most_common():
+    print(f"  {item_name}: {count}")
+
+# Equipment analysis
+equipped_count = sum(1 for item in items if item['equipped'])
+total_durability = sum(item['durability'] for item in items if item['durability'] > 0)
+avg_durability = total_durability / len([i for i in items if i['durability'] > 0])
+
+print(f"\nStats:")
+print(f"  Total items: {len(items)}")
+print(f"  Equipped: {equipped_count}")
+print(f"  Average durability: {avg_durability:.1f}%")
+
+# Quality distribution
+quality_counts = Counter(item['quality'] for item in items)
+print("\nQuality levels:")
+for quality in sorted(quality_counts.keys()):
+    print(f"  Level {quality}: {quality_counts[quality]} items")
+```
+
+### Advanced: Custom Binary Parsing
+
+For custom parsing needs, use the `ValheimItemReader` class directly:
+
+```python
+from valheim_save_tools_py import ValheimItemReader
+import base64
+
+# Decode base64
+binary_data = base64.b64decode(base64_string)
+
+# Create reader
+reader = ValheimItemReader(binary_data)
+
+# Read header manually
+version = reader.read_int32()
+num_items = reader.read_int32()
+
+print(f"Data version: {version}")
+print(f"Item count: {num_items}")
+
+# Read items with custom logic
+items = []
+for i in range(num_items):
+    try:
+        item = reader.read_item()
+
+        # Custom filtering during parsing
+        if item['quality'] >= 3:  # Only high-quality items
+            items.append(item)
+    except Exception as e:
+        print(f"Error reading item {i}: {e}")
+        break
+
+print(f"Found {len(items)} high-quality items")
+```
+
+### Item Data Structure
+
+Each parsed item contains:
+
+```python
+{
+    'name': 'SwordIron',          # Item ID/name
+    'stack': 1,                    # Quantity in stack
+    'durability': 75.5,            # Current durability
+    'pos_x': 3,                    # Inventory X position
+    'pos_y': 1,                    # Inventory Y position
+    'equipped': True,              # Is currently equipped
+    'quality': 2,                  # Quality/upgrade level
+    'variant': 0,                  # Item variant
+    'crafter_id': 987654321,       # Crafter's player ID
+    'crafter_name': 'Warrior'      # Crafter's name
+}
 ```
 
 ---

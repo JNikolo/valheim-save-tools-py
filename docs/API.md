@@ -12,6 +12,7 @@ Complete API documentation for Valheim Save Tools Python API.
 
 - [Core Class](#core-class)
 - [File Conversion Methods](#file-conversion-methods)
+- [Item Parsing](#item-parsing)
 - [Global Keys Methods](#global-keys-methods)
 - [Structure Processing Methods](#structure-processing-methods)
 - [Builder Pattern](#builder-pattern)
@@ -130,6 +131,143 @@ vst.from_json("world.json")  # Creates world.db
 # Explicit output filename
 vst.from_json("backup.json", "world_restored.db")
 ```
+
+---
+
+## Item Parsing
+
+### `parse_items_from_base64()`
+
+```python
+parse_items_from_base64(b64_string: str) -> List[Dict]
+```
+
+Parse Valheim inventory/item data from base64-encoded binary format.
+
+**Parameters:**
+
+- `b64_string` (str): Base64-encoded inventory data (typically from save files)
+
+**Returns:** List of item dictionaries, each containing:
+
+- `name` (str): Item name/ID
+- `stack` (int): Number of items in stack
+- `durability` (float): Item durability (0-100+ range)
+- `pos_x` (int): Inventory X position
+- `pos_y` (int): Inventory Y position
+- `equipped` (bool): Whether item is equipped
+- `quality` (int): Item quality/upgrade level (1-10+)
+- `variant` (int): Item variant
+- `crafter_id` (int): Player ID who crafted the item
+- `crafter_name` (str): Name of player who crafted the item
+
+**Raises:**
+
+- `Exception`: If base64 decoding fails or data is malformed
+
+**Example:**
+
+```python
+from valheim_save_tools_py import parse_items_from_base64
+
+# Parse inventory data
+base64_data = "AQAAAAIAAAAKQXhlQnJvbnpl..."
+items = parse_items_from_base64(base64_data)
+
+# Display items
+for item in items:
+    print(f"Item: {item['name']}")
+    print(f"  Stack: {item['stack']}")
+    print(f"  Durability: {item['durability']:.1f}")
+    print(f"  Quality: {item['quality']}")
+    print(f"  Equipped: {item['equipped']}")
+    if item['crafter_name']:
+        print(f"  Crafted by: {item['crafter_name']}")
+
+# Filter equipped items
+equipped = [item for item in items if item['equipped']]
+print(f"Equipped items: {len(equipped)}")
+
+# Check for specific items
+weapons = [item for item in items if 'Sword' in item['name'] or 'Bow' in item['name']]
+```
+
+### `ValheimItemReader`
+
+```python
+ValheimItemReader(data: bytes)
+```
+
+Low-level binary reader for parsing Valheim item data structures.
+
+**Parameters:**
+
+- `data` (bytes): Binary data to read from
+
+**Attributes:**
+
+- `data` (bytes): The binary data being read
+- `offset` (int): Current read position in the data
+
+**Methods:**
+
+#### `read_byte() -> int`
+
+Read a single byte and advance offset.
+
+#### `read_int32() -> int`
+
+Read a 4-byte signed integer (little-endian).
+
+#### `read_int64() -> int`
+
+Read an 8-byte signed long (little-endian).
+
+#### `read_float() -> float`
+
+Read a 4-byte floating-point number (little-endian).
+
+#### `read_bool() -> bool`
+
+Read a boolean value (1 byte, True if non-zero).
+
+#### `read_string() -> str`
+
+Read a length-prefixed UTF-8 string (1-byte length prefix).
+
+#### `read_item() -> Dict`
+
+Read a complete Valheim item structure and return as dictionary.
+
+**Example:**
+
+```python
+from valheim_save_tools_py import ValheimItemReader
+import base64
+
+# Decode base64 data
+binary_data = base64.b64decode(base64_string)
+
+# Create reader
+reader = ValheimItemReader(binary_data)
+
+# Read header
+version = reader.read_int32()
+num_items = reader.read_int32()
+
+# Read items manually
+items = []
+for i in range(num_items):
+    item = reader.read_item()
+    items.append(item)
+
+print(f"Version: {version}")
+print(f"Found {len(items)} items")
+```
+
+**Use Case:**
+
+The `ValheimItemReader` class is useful when you need fine-grained control over parsing or when working with custom binary formats. For most use cases, the `parse_items_from_base64()` function is more convenient.
 
 ---
 

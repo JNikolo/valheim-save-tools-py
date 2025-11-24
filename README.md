@@ -9,6 +9,7 @@ A Pythonic wrapper for [Valheim Save Tools](https://github.com/Kakoen/valheim-sa
 ## Features
 
 ✅ **File Conversion** - Convert between binary formats (.db, .fwl, .fch) and JSON  
+✅ **Item Parsing** - Parse and read Valheim inventory/item data from base64  
 ✅ **Global Keys Management** - Add, remove, or list global keys (boss defeats, events)  
 ✅ **Structure Cleaning** - Remove abandoned structures with configurable thresholds  
 ✅ **World Reset** - Reset world to initial state while preserving progress  
@@ -89,6 +90,24 @@ vst.clean_structures("world.db")
 
 # Clean with custom threshold
 vst.clean_structures("world.db", threshold=50)
+```
+
+### Parse Inventory Items
+
+```python
+from valheim_save_tools_py import parse_items_from_base64
+
+# Parse base64-encoded inventory data
+base64_data = "AQAAAAIAAAAKQXhlQnJvbnpl..."  # From save file
+items = parse_items_from_base64(base64_data)
+
+# Access item information
+for item in items:
+    print(f"Item: {item['name']}")
+    print(f"Stack: {item['stack']}")
+    print(f"Durability: {item['durability']}")
+    print(f"Quality: {item['quality']}")
+    print(f"Equipped: {item['equipped']}")
 ```
 
 ## Requirements

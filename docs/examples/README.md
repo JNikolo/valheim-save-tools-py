@@ -29,7 +29,27 @@ python convert.py world.json
 python convert.py character.fch
 ```
 
-### 2. `global_keys.py` - Global Keys Management
+### 2. `parse_items.py` - Item Parsing and Analysis
+
+Shows how to parse and analyze Valheim inventory/item data from base64-encoded format.
+
+**Key features:**
+
+- Parse inventory data from base64
+- Display item details
+- Inventory statistics and analysis
+- Filter items by category
+- Find damaged items
+- List equipped items
+- Custom binary parsing
+
+**Usage:**
+
+```bash
+python parse_items.py
+```
+
+### 3. `global_keys.py` - Global Keys Management
 
 Shows how to manage global keys (boss defeats, events, etc.) in world files.
 
@@ -48,7 +68,7 @@ Shows how to manage global keys (boss defeats, events, etc.) in world files.
 python global_keys.py world.db
 ```
 
-### 3. `clean_and_reset.py` - Structure Cleaning and World Reset
+### 4. `clean_and_reset.py` - Structure Cleaning and World Reset
 
 Demonstrates cleaning structures and resetting worlds with different thresholds.
 
@@ -68,7 +88,7 @@ python clean_and_reset.py world.db
 python clean_and_reset.py world.db 50
 ```
 
-### 4. `advanced_workflow.py` - Complex Workflows
+### 5. `advanced_workflow.py` - Complex Workflows
 
 Shows real-world, complex workflows combining multiple features.
 
