@@ -192,6 +192,48 @@ class TestToJsonWithFilelike:
         # Verify result
         assert result == {"type": "FWL"}
         assert mock_run.called
+    
+    @patch('valheim_save_tools_py.wrapper.ValheimSaveTools.run_command')
+    def test_to_json_with_filename_attribute(self, mock_run, vst):
+        """Test to_json auto-detects from .filename attribute (FastAPI UploadFile)."""
+        # Create a mock object with .filename attribute (like FastAPI UploadFile)
+        class MockUploadFile:
+            def __init__(self, content, filename):
+                self._bio = BytesIO(content)
+                self.filename = filename
+            
+            def read(self, size=-1):
+                return self._bio.read(size)
+            
+            def seek(self, offset, whence=0):
+                return self._bio.seek(offset, whence)
+            
+            def tell(self):
+                return self._bio.tell()
+        
+        # Create mock upload file with .fwl extension
+        upload_file = MockUploadFile(b"fake fwl content", "world.fwl")
+        
+        # Mock the run_command to verify temp file has .fwl extension
+        def create_json_output(*args, **kwargs):
+            input_path = args[0]
+            output_path = args[1]
+            
+            # Verify temp file has .fwl extension (detected from .filename)
+            assert input_path.endswith('.fwl'), f"Expected .fwl extension, got {input_path}"
+            
+            with open(output_path, 'w') as f:
+                json.dump({"type": "FWL", "from": "uploadfile"}, f)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        
+        mock_run.side_effect = create_json_output
+        
+        # Run to_json - should auto-detect .fwl from .filename attribute
+        result = vst.to_json(upload_file)
+        
+        # Verify result
+        assert result == {"type": "FWL", "from": "uploadfile"}
+        assert mock_run.called
 
 
 class TestFromJsonWithFilelike:
