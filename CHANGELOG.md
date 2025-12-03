@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2025-12-02
+
+### Fixed
+
+- **File-like object reusability** - File-like objects can now be reused multiple times without errors
+  - `_resolve_input()` now saves and restores the original file position after reading
+  - Prevents `BytesIO` and other file-like objects from being left at EOF
+  - Allows the same file-like object to be passed to multiple method calls
+- **File type detection for file-like objects** - Automatic detection of file type from filename attributes
+  - Auto-detects file extension from `.filename` attribute (FastAPI `UploadFile`, Flask `FileStorage`)
+  - Falls back to `.name` attribute (standard Python file objects, Django `UploadedFile`)
+  - Prevents JAR parsing errors when wrong file extension is used
+  - FastAPI `UploadFile` now fully supported without manual type hints
+- **File extension preservation** - Temp files now created with correct extensions based on input
+  - Fixes `BufferUnderflowException` errors when passing `.fwl` or `.fch` files as file-like objects
+  - JAR tool correctly identifies file type from extension
+
+### Added
+
+- `input_file_type` optional parameter to `to_json()` for explicit file type hints
+  - Supports `'db'`, `'fwl'`, `'fch'` values
+  - Overrides automatic detection when needed
+  - Useful when filename attribute has incorrect extension
+- Comprehensive test coverage for file-like object features
+  - Added test for file-like object reuse (`test_resolve_input_bytesio_reuse`)
+  - Added test for file type hint parameter (`test_to_json_with_file_type_hint`)
+  - Added test for FastAPI `UploadFile` compatibility (`test_to_json_with_filename_attribute`)
+
+### Changed
+
+- `_resolve_input()` method now includes `auto_detect_suffix` parameter
+  - Automatically detects file type from `.filename` or `.name` attributes
+  - More intelligent temp file creation with correct extensions
+  - Improved compatibility with web framework upload handlers
+
 ## [0.4.0] - 2025-11-24
 
 ### Added
@@ -113,3 +148,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.2.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.2.0
 [0.3.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.3.0
 [0.4.0]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.4.0
+[0.4.1]: https://github.com/JNikolo/valheim-save-tools-py/releases/tag/v0.4.1
