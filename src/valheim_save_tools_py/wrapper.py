@@ -132,21 +132,56 @@ class ValheimSaveTools:
         """
         return hasattr(obj, 'read') and callable(getattr(obj, 'read'))
     
-    def _resolve_input(self, input_source: Union[str, BinaryIO], suffix: str = "") -> tuple[str, bool]:
+    def _resolve_input(self, input_source: Union[str, BinaryIO], suffix: str = "", auto_detect_suffix: bool = True) -> tuple[str, bool]:
         """
         Resolve input to a file path, creating temp file if needed.
         
         Args:
             input_source: File path or file-like object
             suffix: File suffix for temp file (e.g., '.db', '.json')
+            auto_detect_suffix: If True, try to detect suffix from file-like object's 
+                              .filename (FastAPI UploadFile) or .name (standard files) attribute
             
         Returns:
             Tuple of (file_path, is_temp_file)
         """
         if self._is_file_like(input_source):
+            # Try to detect suffix from file-like object's filename or name attribute
+            detected_suffix = suffix
+            if auto_detect_suffix:
+                # Try .filename first (FastAPI UploadFile, Flask FileStorage)
+                # Then fall back to .name (standard file objects)
+                filename_to_check = None
+                
+                if hasattr(input_source, 'filename'):
+                    try:
+                        filename_to_check = input_source.filename
+                    except (AttributeError, TypeError):
+                        pass
+                
+                if filename_to_check is None and hasattr(input_source, 'name'):
+                    try:
+                        filename_to_check = input_source.name
+                    except (AttributeError, TypeError):
+                        pass
+                
+                # Extract extension if we found a filename
+                if filename_to_check and isinstance(filename_to_check, str):
+                    ext = Path(filename_to_check).suffix
+                    if ext:
+                        detected_suffix = ext
+            
             # Create temp file and write content
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=detected_suffix)
             try:
+                # Save current position if seekable
+                original_position = None
+                if hasattr(input_source, 'seek') and hasattr(input_source, 'tell'):
+                    try:
+                        original_position = input_source.tell()
+                    except (OSError, IOError):
+                        pass
+                
                 # Ensure we're reading in binary mode
                 if hasattr(input_source, 'mode') and 'b' not in input_source.mode:
                     # Text mode file-like object
@@ -159,6 +194,14 @@ class ValheimSaveTools:
                     # Binary mode or BytesIO
                     content = input_source.read()
                     tmp.write(content)
+                
+                # Reset file pointer to original position for reuse
+                if original_position is not None:
+                    try:
+                        input_source.seek(original_position)
+                    except (OSError, IOError):
+                        pass
+                
                 tmp.close()
                 return tmp.name, True
             except Exception as e:
@@ -201,7 +244,8 @@ class ValheimSaveTools:
     def to_json(
         self, 
         input_file: Union[str, BinaryIO], 
-        output_file: Union[str, BinaryIO, None] = None
+        output_file: Union[str, BinaryIO, None] = None,
+        input_file_type: Optional[str] = None
     ) -> Dict:
         """
         Convert Valheim save file to JSON.
@@ -209,12 +253,29 @@ class ValheimSaveTools:
         Args:
             input_file: Path to .db, .fwl, or .fch file, or file-like object
             output_file: Path to output JSON file, file-like object, or None
+            input_file_type: Optional hint for file-like objects ('db', 'fwl', or 'fch').
+                           If not provided, will attempt to detect from file-like object's .filename attribute.
+                           Falls back to 'db' if detection fails. Ignored for file paths.
             
         Returns:
             Parsed JSON data as dictionary. If output_file is provided, also saves to that file.
         """
+        # Determine suffix for temp file
+        if self._is_file_like(input_file):
+            # Use provided hint if available
+            if input_file_type:
+                suffix = f".{input_file_type.lstrip('.')}"
+                auto_detect = False  # Don't auto-detect if explicitly provided
+            else:
+                suffix = ".db"  # Default fallback
+                auto_detect = True  # Try to detect from .name attribute
+        else:
+            # For file paths, preserve the original extension
+            suffix = Path(str(input_file)).suffix or ".db"
+            auto_detect = False
+        
         # Resolve input to file path
-        input_path, input_is_temp = self._resolve_input(input_file, suffix=".db")
+        input_path, input_is_temp = self._resolve_input(input_file, suffix=suffix, auto_detect_suffix=auto_detect)
         
         try:
             # Check file type based on path if available
