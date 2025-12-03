@@ -82,6 +82,33 @@ class TestResolveInput:
         import os
         if os.path.exists(path):
             os.remove(path)
+    
+    def test_resolve_input_bytesio_reuse(self, vst):
+        """Test that BytesIO can be reused after resolving."""
+        bio = BytesIO(b"test data for reuse")
+        
+        # First resolve
+        path1, is_temp1 = vst._resolve_input(bio, suffix=".db")
+        assert is_temp1 is True
+        
+        # Verify file position was reset (should be at start)
+        assert bio.tell() == 0
+        
+        # Second resolve - should work without error
+        path2, is_temp2 = vst._resolve_input(bio, suffix=".db")
+        assert is_temp2 is True
+        
+        # Verify both temp files have the same content
+        with open(path1, 'rb') as f1, open(path2, 'rb') as f2:
+            assert f1.read() == b"test data for reuse"
+            assert f2.read() == b"test data for reuse"
+        
+        # Cleanup
+        import os
+        if os.path.exists(path1):
+            os.remove(path1)
+        if os.path.exists(path2):
+            os.remove(path2)
 
 
 class TestToJsonWithFilelike:
@@ -137,6 +164,34 @@ class TestToJsonWithFilelike:
         output_bio.seek(0)
         output_data = output_bio.read()
         assert len(output_data) > 0
+    
+    @patch('valheim_save_tools_py.wrapper.ValheimSaveTools.run_command')
+    def test_to_json_with_file_type_hint(self, mock_run, vst):
+        """Test to_json with file type hint for file-like objects."""
+        # Create fake .fwl content
+        fwl_content = b"fake fwl content"
+        bio = BytesIO(fwl_content)
+        
+        # Mock the run_command to verify the temp file has .fwl extension
+        def create_json_output(*args, **kwargs):
+            input_path = args[0]
+            output_path = args[1]
+            
+            # Verify temp file has .fwl extension
+            assert input_path.endswith('.fwl'), f"Expected .fwl extension, got {input_path}"
+            
+            with open(output_path, 'w') as f:
+                json.dump({"type": "FWL"}, f)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        
+        mock_run.side_effect = create_json_output
+        
+        # Run to_json with file type hint
+        result = vst.to_json(bio, input_file_type='fwl')
+        
+        # Verify result
+        assert result == {"type": "FWL"}
+        assert mock_run.called
 
 
 class TestFromJsonWithFilelike:

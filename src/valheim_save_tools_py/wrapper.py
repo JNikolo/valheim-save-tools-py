@@ -147,6 +147,14 @@ class ValheimSaveTools:
             # Create temp file and write content
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
             try:
+                # Save current position if seekable
+                original_position = None
+                if hasattr(input_source, 'seek') and hasattr(input_source, 'tell'):
+                    try:
+                        original_position = input_source.tell()
+                    except (OSError, IOError):
+                        pass
+                
                 # Ensure we're reading in binary mode
                 if hasattr(input_source, 'mode') and 'b' not in input_source.mode:
                     # Text mode file-like object
@@ -159,6 +167,14 @@ class ValheimSaveTools:
                     # Binary mode or BytesIO
                     content = input_source.read()
                     tmp.write(content)
+                
+                # Reset file pointer to original position for reuse
+                if original_position is not None:
+                    try:
+                        input_source.seek(original_position)
+                    except (OSError, IOError):
+                        pass
+                
                 tmp.close()
                 return tmp.name, True
             except Exception as e:
@@ -201,7 +217,8 @@ class ValheimSaveTools:
     def to_json(
         self, 
         input_file: Union[str, BinaryIO], 
-        output_file: Union[str, BinaryIO, None] = None
+        output_file: Union[str, BinaryIO, None] = None,
+        input_file_type: Optional[str] = None
     ) -> Dict:
         """
         Convert Valheim save file to JSON.
@@ -209,12 +226,25 @@ class ValheimSaveTools:
         Args:
             input_file: Path to .db, .fwl, or .fch file, or file-like object
             output_file: Path to output JSON file, file-like object, or None
+            input_file_type: For file-like objects, hint the file type ('db', 'fwl', or 'fch').
+                           If not provided, defaults to 'db'. Ignored for file paths.
             
         Returns:
             Parsed JSON data as dictionary. If output_file is provided, also saves to that file.
         """
+        # Determine suffix for temp file
+        if self._is_file_like(input_file):
+            # Use provided hint or default to .db
+            if input_file_type:
+                suffix = f".{input_file_type.lstrip('.')}"
+            else:
+                suffix = ".db"
+        else:
+            # For file paths, preserve the original extension
+            suffix = Path(str(input_file)).suffix or ".db"
+        
         # Resolve input to file path
-        input_path, input_is_temp = self._resolve_input(input_file, suffix=".db")
+        input_path, input_is_temp = self._resolve_input(input_file, suffix=suffix)
         
         try:
             # Check file type based on path if available
